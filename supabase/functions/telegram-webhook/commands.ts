@@ -56,6 +56,7 @@ type TelegramCallback = {
   message?: { message_id: number; chat: { id: number } };
 };
 type WizardDraft = {
+  edit_reminder_id?: string;
   title?: string;
   message?: string | null;
   start_at?: string;
@@ -70,7 +71,6 @@ type WizardState = {
   chat_id: number;
   step: "title" | "message" | "schedule";
   draft: WizardDraft;
-  edit_reminder_id?: string;
 };
 
 type TelegramDatabase = {
@@ -279,8 +279,8 @@ async function startEditReminder(
     user_id: userId,
     chat_id: chatId,
     step: "title",
-    edit_reminder_id: reminder.id,
     draft: {
+      edit_reminder_id: reminder.id,
       title: reminder.title,
       message: reminder.message,
       category: reminder.category,
@@ -521,11 +521,11 @@ async function advanceWizard(
       recurrence_rule: recurrence.recurrence_rule,
       status: "active",
     };
-    const { error } = state.edit_reminder_id
+    const { error } = state.draft.edit_reminder_id
       ? await db
           .from("reminders")
           .update(reminderPayload)
-          .eq("id", state.edit_reminder_id)
+          .eq("id", state.draft.edit_reminder_id)
           .eq("user_id", userId)
       : await db.from("reminders").insert(reminderPayload);
     if (error) {
@@ -547,7 +547,7 @@ async function advanceWizard(
     await sendMessage(
       botToken,
       chatId,
-      state.edit_reminder_id
+      state.draft.edit_reminder_id
         ? "✅ Reminder berhasil diperbarui dan dijadwalkan ulang!\n\nGunakan tombol di bawah untuk melihat reminder lainnya."
         : "✅ Reminder berhasil disimpan dan dijadwalkan!\n\nGunakan tombol di bawah untuk melihat atau membuat reminder berikutnya.",
       commandKeyboard,
