@@ -570,7 +570,7 @@ async function listReminders(
     .eq("user_id", userId)
     .in(
       "status",
-      mode === "list" || mode === "delete"
+      mode === "list" || mode === "today" || mode === "delete"
         ? ["active", "paused", "completed", "cancelled", "disabled"]
         : ["active"],
     )
@@ -637,7 +637,21 @@ async function listReminders(
       "reminder_id",
       reminders.map((reminder: Record<string, any>) => reminder.id),
     )
-    .in("status", ["pending", "sent", "snoozed", "failed"])
+    .in(
+      "status",
+      mode === "today"
+        ? [
+            "pending",
+            "processing",
+            "sent",
+            "snoozed",
+            "completed",
+            "skipped",
+            "failed",
+            "cancelled",
+          ]
+        : ["pending", "processing", "sent", "snoozed", "failed"],
+    )
     .order("scheduled_at", { ascending: true });
   const now = new Date();
   const todayKey = new Intl.DateTimeFormat("en-CA", {
@@ -648,6 +662,16 @@ async function listReminders(
   }).format(now);
   const nextByReminder = new Map<string, Record<string, any>>();
   for (const occurrence of occurrences ?? []) {
+    const reminder = reminders.find(
+      (item: Record<string, any>) => item.id === occurrence.reminder_id,
+    );
+    if (
+      mode === "today" &&
+      reminder &&
+      localDate(occurrence.scheduled_at, reminder.timezone ?? timezone) !==
+        todayKey
+    )
+      continue;
     const existing = nextByReminder.get(occurrence.reminder_id);
     if (
       !existing ||
@@ -658,7 +682,7 @@ async function listReminders(
   }
   let rows = reminders.flatMap((reminder: Record<string, any>) => {
     const occurrence = nextByReminder.get(reminder.id);
-    if (!occurrence && mode !== "list") return [];
+    if (!occurrence && mode !== "list" && mode !== "today") return [];
     const scheduledAt =
       occurrence?.status === "snoozed"
         ? occurrence.snoozed_until ?? occurrence.scheduled_at
@@ -671,7 +695,11 @@ async function listReminders(
         localDate(scheduledAt, reminder.timezone ?? timezone) === todayKey,
     );
   if (mode === "upcoming")
-    rows = rows.filter(({ scheduledAt }) => new Date(scheduledAt) >= now);
+    rows = rows.filter(
+      ({ reminder, scheduledAt }) =>
+        localDate(scheduledAt, reminder.timezone ?? timezone) === todayKey &&
+        new Date(scheduledAt) >= now,
+    );
   rows = rows.slice(0, 15);
   if (!rows.length) {
     await sendMessage(
