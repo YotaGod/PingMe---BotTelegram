@@ -30,6 +30,7 @@ import {
   Settings2,
   Sparkles,
   Moon,
+  RotateCcw,
   Trash2,
   Sun,
   X,
@@ -37,6 +38,13 @@ import {
 import { demoReminders } from "@/lib/demo-data";
 import { getSupabase } from "@/lib/supabase";
 import type { Reminder, ScheduleType } from "@/lib/types";
+import {
+  canCompleteReminder,
+  canSnoozeReminder,
+  canToggleReminder,
+  getBulkStatusEligibleIds,
+  isTerminalReminderStatus,
+} from "@/lib/reminder-status";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Section = "dashboard" | "reminders" | "calendar" | "history" | "settings";
@@ -664,8 +672,10 @@ export function ReminderDashboard({ section }: { section: Section }) {
   async function updateStatus(reminder: Reminder, status: Reminder["status"]) {
     if (supabase) {
       if (status === "completed") {
-        if (!reminder.next_occurrence_id)
-          return setError("Occurrence aktif tidak ditemukan. Coba muat ulang.");
+        if (isTerminalReminderStatus(reminder.status))
+          return setError("Reminder ini sudah selesai. Edit untuk memulihkannya.");
+        if (!canCompleteReminder(reminder))
+          return setError("Jadwal reminder belum sinkron. Muat ulang sebelum menyelesaikannya.");
         const { error: actionError } = await supabase.rpc(
           "apply_user_occurrence_action",
           {
@@ -688,6 +698,8 @@ export function ReminderDashboard({ section }: { section: Section }) {
         window.setTimeout(() => setNotice(""), 2600);
         return;
       }
+      if (!canToggleReminder(reminder.status))
+        return setError("Reminder ini tidak dapat dijeda atau dilanjutkan. Edit untuk memulihkannya.");
       const { error: updateError } = await supabase
         .from("reminders")
         .update({ status })
@@ -744,6 +756,12 @@ export function ReminderDashboard({ section }: { section: Section }) {
   }
 
   async function snoozeReminder(reminder: Reminder) {
+    if (!canSnoozeReminder(reminder))
+      return setError(
+        isTerminalReminderStatus(reminder.status)
+          ? "Reminder ini sudah tidak aktif. Edit untuk memulihkannya."
+          : "Jadwal reminder belum sinkron. Muat ulang sebelum menundanya.",
+      );
     const rawMinutes = window.prompt(
       "Tunda berapa menit? Pilih 5, 10, 30, 60, atau 1440 (besok).",
       "10",
@@ -872,7 +890,8 @@ export function ReminderDashboard({ section }: { section: Section }) {
   }
 
   async function bulkUpdate(status: "paused" | "active") {
-    const ids = selectedIds.filter((id) => reminders.some((item) => item.id === id));
+    const selectedCount = selectedIds.filter((id) => reminders.some((item) => item.id === id)).length;
+    const ids = getBulkStatusEligibleIds(reminders, selectedIds);
     if (!ids.length) return setNotice("Pilih reminder terlebih dahulu.");
     if (supabase) {
       const { error: updateError } = await supabase
@@ -885,7 +904,11 @@ export function ReminderDashboard({ section }: { section: Section }) {
       persist(reminders.map((item) => (ids.includes(item.id) ? { ...item, status } : item)));
     }
     setSelectedIds([]);
-    setNotice(`${ids.length} reminder diperbarui.`);
+    setNotice(
+      selectedCount > ids.length
+        ? `${ids.length} reminder diperbarui. Reminder selesai/dibatalkan dilewati.`
+        : `${ids.length} reminder diperbarui.`,
+    );
     window.setTimeout(() => setNotice(""), 2600);
   }
 
@@ -1585,7 +1608,13 @@ function ReminderRow({
       <button
         className="complete-button"
         onClick={onComplete}
+        disabled={!canCompleteReminder(reminder)}
         aria-label={`Tandai ${reminder.title} selesai`}
+        title={
+          reminder.status === "completed"
+            ? "Sudah selesai — edit untuk memulihkan"
+            : "Tandai selesai"
+        }
       >
         <Check size={15} />
       </button>
@@ -1615,15 +1644,20 @@ function ReminderRow({
           : reminder.schedule_type}
       </span>
       <div className="row-actions">
-        <button aria-label="Edit reminder" onClick={() => onEdit(reminder)}>
-          <Pencil size={15} />
+        <button
+          aria-label={isTerminalReminderStatus(reminder.status) ? "Pulihkan reminder" : "Edit reminder"}
+          onClick={() => onEdit(reminder)}
+          title={isTerminalReminderStatus(reminder.status) ? "Pulihkan reminder" : "Edit reminder"}
+        >
+          {isTerminalReminderStatus(reminder.status) ? <RotateCcw size={15} /> : <Pencil size={15} />}
         </button>
-        <button aria-label="Tunda 10 menit" onClick={onSnooze}>
+        <button aria-label="Tunda 10 menit" onClick={onSnooze} disabled={!canSnoozeReminder(reminder)}>
           <Clock3 size={15} />
         </button>
         <button
           aria-label={reminder.status === "paused" ? "Lanjutkan" : "Jeda"}
           onClick={onToggle}
+          disabled={!canToggleReminder(reminder.status)}
         >
           {reminder.status === "paused" ? (
             <Play size={15} />
@@ -1747,7 +1781,17 @@ function ReminderTable({
                 <button
                   className={`complete-button compact-check ${item.status === "completed" ? "is-completed" : ""}`}
                   onClick={() => onComplete(item)}
-                  aria-label={`Tandai ${item.title} selesai`}
+                  disabled={!canCompleteReminder(item)}
+                  aria-label={
+                    item.status === "completed"
+                      ? `${item.title} sudah selesai`
+                      : `Tandai ${item.title} selesai`
+                  }
+                  title={
+                    item.status === "completed"
+                      ? "Sudah selesai — gunakan Edit untuk memulihkan"
+                      : "Tandai selesai"
+                  }
                 >
                   <Check size={14} />
                 </button>
@@ -1777,16 +1821,25 @@ function ReminderTable({
                 {item.status}
               </span>
               <div className="table-actions">
-                <button aria-label="Edit reminder" onClick={() => onEdit(item)}>
-                  <Pencil size={15} />
+                <button
+                  aria-label={isTerminalReminderStatus(item.status) ? "Pulihkan reminder" : "Edit reminder"}
+                  onClick={() => onEdit(item)}
+                  title={isTerminalReminderStatus(item.status) ? "Pulihkan reminder" : "Edit reminder"}
+                >
+                  {isTerminalReminderStatus(item.status) ? <RotateCcw size={15} /> : <Pencil size={15} />}
                 </button>
                 <button
                   aria-label="Tunda 10 menit"
                   onClick={() => onSnooze(item)}
+                  disabled={!canSnoozeReminder(item)}
                 >
                   <Clock3 size={15} />
                 </button>
-                <button aria-label="Ubah status" onClick={() => onToggle(item)}>
+                <button
+                  aria-label="Ubah status"
+                  onClick={() => onToggle(item)}
+                  disabled={!canToggleReminder(item.status)}
+                >
                   {item.status === "paused" ? (
                     <Play size={15} />
                   ) : (

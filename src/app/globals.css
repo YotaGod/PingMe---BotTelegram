@@ -918,6 +918,15 @@ textarea:focus-visible {
   background: #eff7ee;
   color: #4f855e;
 }
+.complete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.complete-button:disabled:hover {
+  border-color: #cfdbd0;
+  background: #fff;
+  color: transparent;
+}
 .complete-button.is-completed {
   border-color: #70a07c;
   background: #eff7ee;
@@ -1039,6 +1048,16 @@ textarea:focus-visible {
 .table-actions button:hover {
   background: #f0f4ef;
   color: var(--green);
+}
+.row-actions button:disabled,
+.table-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+.row-actions button:disabled:hover,
+.table-actions button:disabled:hover {
+  background: transparent;
+  color: #708278;
 }
 .bottom-row {
   display: grid;
