@@ -2223,8 +2223,14 @@ textarea:focus-visible {
     white-space: nowrap;
   }
   .heading-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     justify-content: flex-start;
     gap: 6px;
+  }
+  .heading-actions .primary-button {
+    grid-column: 1 / -1;
   }
   .hero-strip {
     min-height: 208px;
@@ -2422,6 +2428,7 @@ textarea:focus-visible {
   }
   .table-row {
     position: relative;
+    min-height: 78px;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     padding: 11px;
@@ -2436,12 +2443,15 @@ textarea:focus-visible {
   }
   .table-row > .status-pill {
     position: absolute;
-    right: 45px;
+    left: 42px;
+    right: auto;
     bottom: 13px;
   }
   .table-actions {
     grid-column: 2;
     grid-row: 1;
+    max-width: 108px;
+    flex-wrap: wrap;
     opacity: 0.8;
   }
   .table-reminder .row-title {

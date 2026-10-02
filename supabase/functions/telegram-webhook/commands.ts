@@ -598,7 +598,9 @@ async function listReminders(
 ) {
   const { data: reminders, error } = await db
     .from("reminders")
-    .select("id,title,category,priority,schedule_type,timezone,start_at,status")
+    .select(
+      "id,title,category,priority,schedule_type,timezone,start_at,status,recurrence_rule",
+    )
     .eq("user_id", userId)
     .in(
       "status",
