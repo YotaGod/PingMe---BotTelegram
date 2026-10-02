@@ -1704,6 +1704,29 @@ textarea:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.bulk-actions > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.table-header input[type="checkbox"],
+.table-reminder input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+.table-header > span:first-child,
+.table-reminder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 [data-theme="dark"] .reliability-panel {
   background: #11271e;
 }

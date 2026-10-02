@@ -74,6 +74,8 @@ PostgreSQL is the source of truth. Recurring reminders keep one rolling future o
 - Telegram linking via expiring one-time token; only a hash is stored and redemption is transactional.
 - Telegram commands: `/start`, `/help`, `/reminder`, `/edit`, `/list`, `/today`, `/upcoming`, `/delete`, and `/cancel`. `/reminder` uses inline buttons for category, priority, repeat, and snooze choices.
 - Local demo mode when public Supabase settings are absent.
+- Reliability Center with worker health, stale-occurrence repair, and failed-delivery retry.
+- Reminder JSON export/import, quick templates, bulk pause/resume/delete, and configurable cleanup retention.
 
 ## Install as a PWA
 

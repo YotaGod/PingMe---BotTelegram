@@ -107,6 +107,12 @@ const categoryColor: Record<string, string> = {
   Health: "peach",
   Home: "blue",
 };
+const reminderTemplates = [
+  { id: "personal", label: "Personal", category: "Personal", priority: "medium" as const },
+  { id: "work", label: "Work / Kuliah", category: "Kuliah/Kerja", priority: "high" as const },
+  { id: "health", label: "Kesehatan", category: "Health", priority: "high" as const },
+  { id: "billing", label: "Tagihan", category: "Personal", priority: "high" as const },
+];
 const nav: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Overview", icon: LayoutDashboard },
   { id: "reminders", label: "Reminders", icon: ListTodo },
@@ -293,6 +299,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
   const [mobileNav, setMobileNav] = useState(false);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -847,21 +854,140 @@ export function ReminderDashboard({ section }: { section: Section }) {
     window.setTimeout(() => setNotice(""), 2600);
   }
 
+  function toggleSelected(id: string) {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id],
+    );
+  }
+
+  function toggleAllSelected(items: Reminder[]) {
+    const ids = items.map((item) => item.id);
+    setSelectedIds((current) =>
+      ids.length > 0 && ids.every((id) => current.includes(id))
+        ? current.filter((id) => !ids.includes(id))
+        : Array.from(new Set([...current, ...ids])),
+    );
+  }
+
+  async function bulkUpdate(status: "paused" | "active") {
+    const ids = selectedIds.filter((id) => reminders.some((item) => item.id === id));
+    if (!ids.length) return setNotice("Pilih reminder terlebih dahulu.");
+    if (supabase) {
+      const { error: updateError } = await supabase
+        .from("reminders")
+        .update({ status })
+        .in("id", ids);
+      if (updateError) return setError(updateError.message);
+      persist(await fetchReminders(supabase));
+    } else {
+      persist(reminders.map((item) => (ids.includes(item.id) ? { ...item, status } : item)));
+    }
+    setSelectedIds([]);
+    setNotice(`${ids.length} reminder diperbarui.`);
+    window.setTimeout(() => setNotice(""), 2600);
+  }
+
+  async function bulkDelete() {
+    const ids = selectedIds.filter((id) => reminders.some((item) => item.id === id));
+    if (!ids.length) return setNotice("Pilih reminder terlebih dahulu.");
+    if (!window.confirm(`Hapus ${ids.length} reminder terpilih?`)) return;
+    if (supabase) {
+      const { error: deleteError } = await supabase.from("reminders").delete().in("id", ids);
+      if (deleteError) return setError(deleteError.message);
+      persist(await fetchReminders(supabase));
+    } else {
+      persist(reminders.filter((item) => !ids.includes(item.id)));
+    }
+    setSelectedIds([]);
+    setNotice(`${ids.length} reminder dihapus.`);
+    window.setTimeout(() => setNotice(""), 2600);
+  }
+
+  function exportReminders() {
+    const blob = new Blob([JSON.stringify(reminders, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `pingme-reminders-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setNotice("Reminder berhasil diekspor.");
+    window.setTimeout(() => setNotice(""), 2600);
+  }
+
+  function importReminders() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      void file.text().then(async (text) => {
+        try {
+          const parsed = JSON.parse(text);
+          if (!Array.isArray(parsed) || parsed.some((item) => !item?.title || !item?.start_at))
+            throw new Error("Format JSON tidak valid.");
+          const clean = parsed.map((item) => ({
+            title: String(item.title).trim().slice(0, 120),
+            message: item.message ? String(item.message).slice(0, 1000) : null,
+            category: String(item.category ?? "Personal").slice(0, 40),
+            priority: ["low", "medium", "high"].includes(item.priority) ? item.priority : "medium",
+            schedule_type: ["one_time", "daily", "weekly", "monthly"].includes(item.schedule_type) ? item.schedule_type : "one_time",
+            timezone: String(item.timezone ?? timezone),
+            start_at: String(item.start_at),
+            end_at: item.end_at ? String(item.end_at) : null,
+            recurrence_rule: item.recurrence_rule ?? null,
+            status: "active",
+          }));
+          if (supabase) {
+            const { data: session } = await supabase.auth.getSession();
+            if (!session.session) throw new Error("Silakan masuk sebelum mengimpor.");
+            const { error: insertError } = await supabase.from("reminders").insert(
+              clean.map((item) => ({ ...item, user_id: session.session!.user.id })),
+            );
+            if (insertError) throw insertError;
+            persist(await fetchReminders(supabase));
+          } else {
+            persist([...reminders, ...clean.map((item) => ({ ...item, id: crypto.randomUUID() })) as Reminder[]]);
+          }
+          setNotice(`${clean.length} reminder berhasil diimpor.`);
+          window.setTimeout(() => setNotice(""), 3000);
+        } catch (importError) {
+          setError(importError instanceof Error ? importError.message : "Import gagal.");
+        }
+      });
+    };
+    input.click();
+  }
+
   async function cleanOldData() {
     if (!supabase) {
       setNotice("Pembersihan database tersedia setelah masuk ke akun.");
       window.setTimeout(() => setNotice(""), 2600);
       return;
     }
+    const rawDays = window.prompt(
+      "Simpan data historis berapa hari? Pilih 7, 30, 90, atau 365.",
+      "30",
+    );
+    if (rawDays === null) return;
+    const keepDays = Number(rawDays);
+    if (![7, 30, 90, 365].includes(keepDays)) {
+      return setError("Masa simpan harus 7, 30, 90, atau 365 hari.");
+    }
     if (
       !window.confirm(
-        "Hapus log notifikasi dan occurrence selesai lebih lama dari 30 hari? Reminder aktif dan jadwal yang belum selesai akan tetap aman.",
+        `Hapus log notifikasi dan occurrence selesai lebih lama dari ${keepDays} hari? Reminder aktif dan jadwal yang belum selesai akan tetap aman.`,
       )
     )
       return;
     const { data, error: cleanupError } = await supabase.rpc(
       "cleanup_user_reminder_data",
-      { p_keep_days: 30 },
+      { p_keep_days: keepDays },
     );
     if (cleanupError) return setError(cleanupError.message);
     const result = (data ?? {}) as {
@@ -1120,6 +1246,12 @@ export function ReminderDashboard({ section }: { section: Section }) {
                   </p>
                 </div>
                 <div className="heading-actions">
+                  <button className="secondary-button" onClick={exportReminders}>
+                    Export JSON
+                  </button>
+                  <button className="secondary-button" onClick={importReminders}>
+                    Import JSON
+                  </button>
                   <button className="secondary-button" onClick={cleanOldData}>
                     <Database size={16} /> Bersihkan data lama
                   </button>
@@ -1153,6 +1285,12 @@ export function ReminderDashboard({ section }: { section: Section }) {
                 onDelete={removeReminder}
                 onCreate={openCreate}
                 loading={busy}
+                selectedIds={selectedIds}
+                onSelect={toggleSelected}
+                onSelectAll={() => toggleAllSelected(filtered)}
+                onBulkPause={() => bulkUpdate("paused")}
+                onBulkResume={() => bulkUpdate("active")}
+                onBulkDelete={bulkDelete}
               />
             </>
           ) : (
@@ -1515,6 +1653,12 @@ function ReminderTable({
   onDelete,
   onCreate,
   loading,
+  selectedIds,
+  onSelect,
+  onSelectAll,
+  onBulkPause,
+  onBulkResume,
+  onBulkDelete,
 }: {
   reminders: Reminder[];
   categories: string[];
@@ -1529,6 +1673,12 @@ function ReminderTable({
   onDelete: (item: Reminder) => void;
   onCreate: () => void;
   loading: boolean;
+  selectedIds: string[];
+  onSelect: (id: string) => void;
+  onSelectAll: () => void;
+  onBulkPause: () => void;
+  onBulkResume: () => void;
+  onBulkDelete: () => void;
 }) {
   return (
     <>
@@ -1555,11 +1705,27 @@ function ReminderTable({
           </select>
           <ChevronDown size={14} />
         </label>
+        {selectedIds.length > 0 && (
+          <div className="bulk-actions">
+            <span>{selectedIds.length} dipilih</span>
+            <button className="secondary-button" onClick={onBulkPause}>Jeda</button>
+            <button className="secondary-button" onClick={onBulkResume}>Lanjutkan</button>
+            <button className="secondary-button" onClick={onBulkDelete}>Hapus</button>
+          </div>
+        )}
         <span className="result-count">{reminders.length} reminders</span>
       </div>
       <div className="table-list">
         <div className="table-header">
-          <span>REMINDER</span>
+          <span>
+            <input
+              type="checkbox"
+              aria-label="Pilih semua reminder"
+              checked={reminders.length > 0 && reminders.every((item) => selectedIds.includes(item.id))}
+              onChange={onSelectAll}
+            />{" "}
+            REMINDER
+          </span>
           <span>CATEGORY</span>
           <span>PRIORITY</span>
           <span>SCHEDULE</span>
@@ -1572,6 +1738,12 @@ function ReminderTable({
           reminders.map((item) => (
             <article className="table-row" key={item.id}>
               <div className="table-reminder">
+                <input
+                  type="checkbox"
+                  aria-label={`Pilih ${item.title}`}
+                  checked={selectedIds.includes(item.id)}
+                  onChange={() => onSelect(item.id)}
+                />
                 <button
                   className={`complete-button compact-check ${item.status === "completed" ? "is-completed" : ""}`}
                   onClick={() => onComplete(item)}
@@ -2241,6 +2413,32 @@ function ReminderDialog({
             <div className="dialog-error" role="alert">
               <span>{error}</span>
             </div>
+          )}
+          {!editing && (
+            <label className="field-label">
+              Template cepat <span className="optional">OPTIONAL</span>
+              <select
+                defaultValue=""
+                onChange={(event) => {
+                  const template = reminderTemplates.find(
+                    (item) => item.id === event.target.value,
+                  );
+                  if (template)
+                    setDraft({
+                      ...draft,
+                      category: template.category,
+                      priority: template.priority,
+                    });
+                }}
+              >
+                <option value="">Pilih template</option>
+                {reminderTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
           <label className="field-label">
             What do you want to remember?
