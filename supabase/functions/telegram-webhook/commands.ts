@@ -4,7 +4,8 @@ const commandKeyboard = {
   keyboard: [
     [{ text: "➕ Buat reminder" }, { text: "📋 Reminder aktif" }],
     [{ text: "📅 Hari ini" }, { text: "🔭 Mendatang" }],
-    [{ text: "❓ Bantuan" }, { text: "✖ Batalkan" }],
+    [{ text: "❓ Bantuan" }, { text: "✏️ Edit" }],
+    [{ text: "🗑 Hapus" }],
   ],
   resize_keyboard: true,
   is_persistent: true,
@@ -69,6 +70,7 @@ type WizardState = {
   chat_id: number;
   step: "title" | "message" | "schedule";
   draft: WizardDraft;
+  edit_reminder_id?: string;
 };
 
 type TelegramDatabase = {
@@ -239,7 +241,62 @@ async function startReminder(
   await sendMessage(
     botToken,
     chatId,
-    "📝 Mari buat reminder baru.\n\nApa judul reminder ini? (maks. 100 karakter)\n\nKetik /cancel atau tekan ✖ Batalkan kapan saja.",
+    "📝 Mari buat reminder baru.\n\nApa judul reminder ini? (maks. 100 karakter)\n\nKetik /cancel kapan saja untuk membatalkan.",
+  );
+}
+
+async function startEditReminder(
+  db: TelegramDatabase,
+  botToken: string,
+  callback: TelegramCallback,
+  userId: string,
+  reminderId: string,
+) {
+  const chatId = callback.message?.chat.id;
+  if (!chatId) return;
+  const { data: reminder, error } = await db
+    .from("reminders")
+    .select("id,title,message,category,priority,timezone,start_at,schedule_type,recurrence_rule")
+    .eq("id", reminderId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error || !reminder) {
+    await answerCallback(botToken, callback, "Reminder tidak ditemukan.", true);
+    return;
+  }
+  const frequency = reminder.recurrence_rule?.frequency;
+  const repeat =
+    reminder.schedule_type === "one_time"
+      ? "once"
+      : frequency === "daily"
+        ? "daily"
+        : Array.isArray(reminder.recurrence_rule?.days) &&
+            reminder.recurrence_rule.days.length === 5
+          ? "weekdays"
+          : "weekly";
+  const state: WizardState = {
+    telegram_user_id: String(callback.from.id),
+    user_id: userId,
+    chat_id: chatId,
+    step: "title",
+    edit_reminder_id: reminder.id,
+    draft: {
+      title: reminder.title,
+      message: reminder.message,
+      category: reminder.category,
+      priority: reminder.priority,
+      timezone: reminder.timezone,
+      start_at: reminder.start_at,
+      repeat,
+    },
+  };
+  await saveConversation(db, state);
+  await answerCallback(botToken, callback, "Mode edit dibuka.");
+  await sendMessage(
+    botToken,
+    chatId,
+    `✏️ Edit reminder: ${reminder.title}\n\nKetik judul baru (maks. 100 karakter):`,
   );
 }
 
@@ -453,7 +510,7 @@ async function advanceWizard(
       return;
     }
     const recurrence = formatRecurrence(state.draft);
-    const { error } = await db.from("reminders").insert({
+    const reminderPayload = {
       user_id: userId,
       title: state.draft.title,
       message: state.draft.message ?? null,
@@ -464,7 +521,14 @@ async function advanceWizard(
       schedule_type: recurrence.schedule_type,
       recurrence_rule: recurrence.recurrence_rule,
       status: "active",
-    });
+    };
+    const { error } = state.edit_reminder_id
+      ? await db
+          .from("reminders")
+          .update(reminderPayload)
+          .eq("id", state.edit_reminder_id)
+          .eq("user_id", userId)
+      : await db.from("reminders").insert(reminderPayload);
     if (error) {
       await answerCallback(
         botToken,
@@ -484,7 +548,9 @@ async function advanceWizard(
     await sendMessage(
       botToken,
       chatId,
-      "✅ Reminder berhasil disimpan dan dijadwalkan!\n\nGunakan tombol di bawah untuk melihat atau membuat reminder berikutnya.",
+      state.edit_reminder_id
+        ? "✅ Reminder berhasil diperbarui dan dijadwalkan ulang!\n\nGunakan tombol di bawah untuk melihat reminder lainnya."
+        : "✅ Reminder berhasil disimpan dan dijadwalkan!\n\nGunakan tombol di bawah untuk melihat atau membuat reminder berikutnya.",
       commandKeyboard,
     );
   }
@@ -495,7 +561,7 @@ async function listReminders(
   botToken: string,
   chatId: number,
   userId: string,
-  mode: "list" | "today" | "upcoming" | "delete",
+  mode: "list" | "today" | "upcoming" | "delete" | "edit",
   timezone: string,
 ) {
   const { data: reminders, error } = await db
@@ -504,7 +570,7 @@ async function listReminders(
     .eq("user_id", userId)
     .in(
       "status",
-      mode === "delete"
+      mode === "list" || mode === "delete"
         ? ["active", "paused", "completed", "cancelled", "disabled"]
         : ["active"],
     )
@@ -516,6 +582,8 @@ async function listReminders(
       chatId,
       mode === "delete"
         ? "Tidak ada pengingat yang dapat ditampilkan."
+        : mode === "edit"
+          ? "Tidak ada reminder aktif untuk diedit."
         : "Belum ada pengingat aktif. Ketik /reminder untuk membuat yang baru.",
       commandKeyboard,
     );
@@ -548,6 +616,20 @@ async function listReminders(
     return;
   }
 
+  if (mode === "edit") {
+    await sendMessage(botToken, chatId, "Pilih reminder aktif yang ingin diedit:", {
+      inline_keyboard: reminders
+        .slice(0, 20)
+        .map((reminder: Record<string, any>) => [
+          {
+            text: `✏️ ${String(reminder.title).slice(0, 45)}`,
+            callback_data: `edit-reminder|${reminder.id}`,
+          },
+        ]),
+    });
+    return;
+  }
+
   const { data: occurrences } = await db
     .from("reminder_occurrences")
     .select("reminder_id,scheduled_at,snoozed_until,status")
@@ -576,11 +658,11 @@ async function listReminders(
   }
   let rows = reminders.flatMap((reminder: Record<string, any>) => {
     const occurrence = nextByReminder.get(reminder.id);
-    if (!occurrence) return [];
+    if (!occurrence && mode !== "list") return [];
     const scheduledAt =
-      occurrence.status === "snoozed"
+      occurrence?.status === "snoozed"
         ? occurrence.snoozed_until ?? occurrence.scheduled_at
-        : occurrence.scheduled_at;
+        : occurrence?.scheduled_at ?? reminder.start_at;
     return [{ reminder, occurrence, scheduledAt }];
   });
   if (mode === "today")
@@ -597,7 +679,9 @@ async function listReminders(
       chatId,
       mode === "today"
         ? "Tidak ada pengingat untuk hari ini."
-        : "Tidak ada pengingat mendatang.",
+        : mode === "upcoming"
+          ? "Tidak ada pengingat mendatang."
+          : "Belum ada reminder.",
       commandKeyboard,
     );
     return;
@@ -608,7 +692,7 @@ async function listReminders(
       ? "📅 Reminder Hari Ini"
       : mode === "upcoming"
         ? "🔭 Reminder Mendatang"
-        : "📋 Reminder Aktif";
+        : "📋 Semua Reminder";
   const lines = rows.map(({ reminder, scheduledAt }, index) => {
     const priority =
       reminder.priority === "high"
@@ -616,7 +700,14 @@ async function listReminders(
         : reminder.priority === "medium"
           ? "🟡"
           : "🟢";
-    return `${index + 1}. ${priority} ${reminder.title}\n   📅 ${displayDate(scheduledAt, reminder.timezone ?? timezone)} · ${localTime(scheduledAt, reminder.timezone ?? timezone)}\n   🏷 ${reminder.category}`;
+    const statusLabel: Record<string, string> = {
+      active: "🟢 Aktif",
+      paused: "⏸ Dijeda",
+      completed: "✅ Selesai",
+      cancelled: "🚫 Dibatalkan",
+      disabled: "⛔ Nonaktif",
+    };
+    return `${index + 1}. ${priority} ${reminder.title}\n   📅 ${displayDate(scheduledAt, reminder.timezone ?? timezone)} · ${localTime(scheduledAt, reminder.timezone ?? timezone)}\n   🏷 ${reminder.category}\n   ${statusLabel[String(reminder.status)] ?? "⚪ Tidak diketahui"}`;
   });
   await sendMessage(
     botToken,
@@ -641,6 +732,8 @@ export async function handleTelegramMessage(
     "📅": "/today",
     "🔭": "/upcoming",
     "❓": "/help",
+    "✏️": "/edit",
+    "🗑": "/delete",
     "✖": "/cancel",
   };
   const normalizedCommand = aliases[command] ?? command;
@@ -655,7 +748,7 @@ export async function handleTelegramMessage(
     await sendMessage(
       botToken,
       message.chat.id,
-      "🤖 Panduan Penggunaan Bot\n\nPerintah yang tersedia:\n/start - Memulai bot\n/help - Menampilkan panduan ini\n/reminder - Membuat pengingat baru (Interaktif)\n/list - Melihat daftar pengingat aktif\n/today - Melihat pengingat hari ini\n/upcoming - Melihat reminder mendatang\n/delete - Menghapus satu atau beberapa reminder\n/cancel - Membatalkan proses saat ini",
+      "🤖 Panduan Penggunaan Bot\n\nPerintah yang tersedia:\n/start - Memulai bot\n/help - Menampilkan panduan ini\n/reminder - Membuat pengingat baru (Interaktif)\n/edit - Mengubah reminder aktif\n/list - Melihat daftar pengingat aktif\n/today - Melihat pengingat hari ini\n/upcoming - Melihat reminder mendatang\n/delete - Menghapus satu atau beberapa reminder\n/cancel - Membatalkan proses saat ini",
       { ...commandKeyboard, one_time_keyboard: false },
     );
     return;
@@ -700,7 +793,7 @@ export async function handleTelegramMessage(
     await startReminder(db, botToken, message.chat.id, telegramUserId, userId);
     return;
   }
-  if (["/list", "/today", "/upcoming", "/delete"].includes(normalizedCommand)) {
+  if (["/list", "/today", "/upcoming", "/delete", "/edit"].includes(normalizedCommand)) {
     const { data: profile } = await db
       .from("profiles")
       .select("timezone")
@@ -710,7 +803,8 @@ export async function handleTelegramMessage(
       | "list"
       | "today"
       | "upcoming"
-      | "delete";
+      | "delete"
+      | "edit";
     await listReminders(
       db,
       botToken,
@@ -834,6 +928,20 @@ export async function handleTelegramCallback(
         }),
       );
     }
+    return true;
+  }
+
+  if (action === "edit-reminder") {
+    if (!integration || !/^[0-9a-f-]{36}$/i.test(value)) {
+      await answerCallback(
+        botToken,
+        callback,
+        "Reminder tidak ditemukan.",
+        true,
+      );
+      return true;
+    }
+    await startEditReminder(db, botToken, callback, integration.user_id, value);
     return true;
   }
 
