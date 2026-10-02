@@ -604,9 +604,9 @@ async function listReminders(
     .eq("user_id", userId)
     .in(
       "status",
-      mode === "today" || mode === "delete" || mode === "edit"
-        ? ["active", "paused", "completed", "cancelled", "disabled"]
-        : ["active"],
+      mode === "upcoming"
+        ? ["active"]
+        : ["active", "paused", "completed", "cancelled", "disabled"],
     )
     .order("start_at", { ascending: true })
     .limit(50);
@@ -671,21 +671,16 @@ async function listReminders(
       "reminder_id",
       reminders.map((reminder: Record<string, any>) => reminder.id),
     )
-    .in(
-      "status",
-      mode === "today"
-        ? [
-            "pending",
-            "processing",
-            "sent",
-            "snoozed",
-            "completed",
-            "skipped",
-            "failed",
-            "cancelled",
-          ]
-        : ["pending", "processing", "sent", "snoozed", "failed"],
-    )
+    .in("status", [
+      "pending",
+      "processing",
+      "sent",
+      "snoozed",
+      "completed",
+      "skipped",
+      "failed",
+      "cancelled",
+    ])
     .order("scheduled_at", { ascending: true });
   const now = new Date();
   const todayKey = new Intl.DateTimeFormat("en-CA", {
@@ -695,32 +690,41 @@ async function listReminders(
     day: "2-digit",
   }).format(now);
   const nextByReminder = new Map<string, Record<string, any>>();
+  const lastByReminder = new Map<string, Record<string, any>>();
   for (const occurrence of occurrences ?? []) {
     const reminder = reminders.find(
       (item: Record<string, any>) => item.id === occurrence.reminder_id,
     );
-    if (
-      mode === "today" &&
-      reminder &&
-      localDate(occurrence.scheduled_at, reminder.timezone ?? timezone) !==
-        todayKey
-    )
+    if (mode === "today" && reminder && localDate(occurrence.scheduled_at, timezone) !== todayKey)
       continue;
     if (
       reminder &&
       !isOccurrenceOnReminderSchedule(reminder, occurrence.scheduled_at)
     )
       continue;
-    const existing = nextByReminder.get(occurrence.reminder_id);
-    if (
-      !existing ||
-      new Date(occurrence.snoozed_until ?? occurrence.scheduled_at) <
-        new Date(existing.snoozed_until ?? existing.scheduled_at)
-    )
-      nextByReminder.set(occurrence.reminder_id, occurrence);
+    const isActionable = ["pending", "processing", "sent", "snoozed", "failed"].includes(
+      String(occurrence.status),
+    );
+    if (isActionable) {
+      const existing = nextByReminder.get(occurrence.reminder_id);
+      if (
+        !existing ||
+        new Date(occurrence.snoozed_until ?? occurrence.scheduled_at) <
+          new Date(existing.snoozed_until ?? existing.scheduled_at)
+      )
+        nextByReminder.set(occurrence.reminder_id, occurrence);
+    } else {
+      const existing = lastByReminder.get(occurrence.reminder_id);
+      if (
+        !existing ||
+        new Date(occurrence.scheduled_at) > new Date(existing.scheduled_at)
+      )
+        lastByReminder.set(occurrence.reminder_id, occurrence);
+    }
   }
   let rows = reminders.flatMap((reminder: Record<string, any>) => {
-    const occurrence = nextByReminder.get(reminder.id);
+    const occurrence =
+      nextByReminder.get(reminder.id) ?? lastByReminder.get(reminder.id);
     if (!occurrence && mode !== "list" && mode !== "today") return [];
     const scheduledAt =
       occurrence?.status === "snoozed"
@@ -731,7 +735,7 @@ async function listReminders(
   if (mode === "today")
     rows = rows.filter(
       ({ reminder, scheduledAt }) =>
-        localDate(scheduledAt, reminder.timezone ?? timezone) === todayKey,
+        localDate(scheduledAt, timezone) === todayKey,
     );
   if (mode === "upcoming")
     rows = rows.filter(
@@ -759,7 +763,7 @@ async function listReminders(
       ? "📅 Reminder Hari Ini"
       : mode === "upcoming"
         ? "🔭 Reminder Mendatang"
-        : "📋 Reminder Aktif";
+      : "📋 Semua Reminder";
   const lines = rows.map(({ reminder, scheduledAt }, index) => {
     const priority =
       reminder.priority === "high"
@@ -815,7 +819,7 @@ export async function handleTelegramMessage(
     await sendMessage(
       botToken,
       message.chat.id,
-      "🤖 Panduan Penggunaan Bot\n\nPerintah yang tersedia:\n/start - Memulai bot\n/help - Menampilkan panduan ini\n/reminder - Membuat pengingat baru (Interaktif)\n/edit - Mengubah reminder aktif\n/list - Melihat daftar pengingat aktif\n/today - Melihat pengingat hari ini\n/upcoming - Melihat reminder mendatang\n/delete - Menghapus satu atau beberapa reminder\n/cancel - Membatalkan proses saat ini",
+      "🤖 Panduan Penggunaan Bot\n\nPerintah yang tersedia:\n/start - Memulai bot\n/help - Menampilkan panduan ini\n/reminder - Membuat pengingat baru (Interaktif)\n/edit - Mengubah reminder\n/list - Melihat semua reminder\n/today - Melihat semua reminder hari ini\n/upcoming - Melihat reminder aktif yang belum lewat hari ini\n/delete - Menghapus satu atau beberapa reminder\n/cancel - Membatalkan proses saat ini",
       { ...commandKeyboard, one_time_keyboard: false },
     );
     return;

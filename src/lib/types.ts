@@ -21,4 +21,5 @@ export type Reminder = {
   recurrence_rule: Record<string, unknown> | null;
   next_occurrence_id?: string;
   next_scheduled_at?: string;
+  last_scheduled_at?: string;
 };

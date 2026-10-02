@@ -122,7 +122,11 @@ function shortDate(value: string, timezone = "Asia/Jakarta") {
   }).format(new Date(value));
 }
 function scheduledAt(reminder: Reminder) {
-  return reminder.next_scheduled_at ?? reminder.start_at;
+  return (
+    reminder.next_scheduled_at ??
+    reminder.last_scheduled_at ??
+    reminder.start_at
+  );
 }
 async function fetchReminders(supabase: SupabaseClient): Promise<Reminder[]> {
   const { data, error } = await supabase
@@ -139,22 +143,48 @@ async function fetchReminders(supabase: SupabaseClient): Promise<Reminder[]> {
       "reminder_id",
       rows.map((row) => row.id),
     )
-    .in("status", ["pending", "processing", "sent", "snoozed", "failed"])
+    .in("status", [
+      "pending",
+      "processing",
+      "sent",
+      "snoozed",
+      "failed",
+      "completed",
+      "skipped",
+      "cancelled",
+    ])
     .order("scheduled_at", { ascending: true });
   if (occurrenceError) throw occurrenceError;
-  const next = new Map<
-    string,
-    { id: string; scheduled_at: string; snoozed_until: string | null }
-  >();
+  const next = new Map<string, (typeof occurrences)[number]>();
+  const last = new Map<string, (typeof occurrences)[number]>();
+  const actionable = new Set([
+    "pending",
+    "processing",
+    "sent",
+    "snoozed",
+    "failed",
+  ]);
   for (const occurrence of occurrences ?? []) {
-    if (!next.has(occurrence.reminder_id))
-      next.set(occurrence.reminder_id, occurrence);
+    const target = actionable.has(occurrence.status) ? next : last;
+    const existing = target.get(occurrence.reminder_id);
+    const existingAt = existing
+      ? new Date(existing.snoozed_until ?? existing.scheduled_at).getTime()
+      : null;
+    const currentAt = new Date(
+      occurrence.snoozed_until ?? occurrence.scheduled_at,
+    ).getTime();
+    if (
+      !existing ||
+      (target === next ? currentAt < existingAt! : currentAt > existingAt!)
+    )
+      target.set(occurrence.reminder_id, occurrence);
   }
   return rows.map((row) => ({
     ...row,
     next_occurrence_id: next.get(row.id)?.id,
     next_scheduled_at:
       next.get(row.id)?.snoozed_until ?? next.get(row.id)?.scheduled_at,
+    last_scheduled_at: last.get(row.id)?.scheduled_at,
   }));
 }
 async function fetchHistory(
@@ -488,12 +518,18 @@ export function ReminderDashboard({ section }: { section: Section }) {
       if (!userId)
         return setError("Silakan masuk sebelum menyimpan pengingat.");
       const result = editing
-        ? await supabase
-            .from("reminders")
-            .update(values)
-            .eq("id", editing.id)
-            .select()
-            .single()
+        ? await supabase.rpc("update_reminder_schedule", {
+            p_reminder_id: editing.id,
+            p_title: values.title,
+            p_message: values.message,
+            p_category: values.category,
+            p_priority: values.priority,
+            p_schedule_type: values.schedule_type,
+            p_timezone: values.timezone,
+            p_start_at: values.start_at,
+            p_end_at: values.end_at,
+            p_recurrence_rule: values.recurrence_rule,
+          })
         : await supabase
             .from("reminders")
             .insert({ ...values, user_id: userId })
@@ -501,11 +537,16 @@ export function ReminderDashboard({ section }: { section: Section }) {
             .single();
       if (result.error) return setError(result.error.message);
       if (editing) {
-        persist(
-          reminders.map((item) =>
-            item.id === editing.id ? (result.data as Reminder) : item,
-          ),
-        );
+        try {
+          persist(await fetchReminders(supabase));
+          setHistory(await fetchHistory(supabase));
+        } catch (loadError) {
+          return setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Data terbaru gagal dimuat.",
+          );
+        }
       } else {
         try {
           persist(await fetchReminders(supabase));
