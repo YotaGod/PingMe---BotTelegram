@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(18);
+select extensions.plan(20);
 
 select extensions.has_table('public', 'profiles', 'profiles table exists');
 select extensions.has_table('public', 'reminders', 'reminders table exists');
@@ -24,6 +24,8 @@ select extensions.ok(to_regprocedure('public.next_occurrence_at(uuid,timestamptz
 select extensions.ok(to_regprocedure('public.claim_due_occurrences(integer)') is not null, 'atomic claim function exists');
 select extensions.ok(to_regprocedure('public.apply_user_occurrence_action(uuid,text,integer)') is not null, 'authenticated occurrence action exists');
 select extensions.ok(to_regprocedure('public.apply_telegram_occurrence_action(text,uuid,text,integer)') is not null, 'Telegram ownership-checked action exists');
+select extensions.ok(to_regprocedure('public.update_reminder_schedule(uuid,text,text,text,text,text,text,timestamptz,timestamptz,jsonb)') is not null, 'transactional reminder schedule update exists');
+select extensions.ok(to_regprocedure('public.retry_failed_occurrence(uuid)') is not null, 'failed occurrence retry function exists');
 
 select * from extensions.finish();
 rollback;
