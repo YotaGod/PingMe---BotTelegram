@@ -12,3 +12,5 @@ Task 3: complete (tests: `npm run test:unit`, `npm run typecheck`, `npm run lint
 Task 4: complete (tests: `npm run test:unit`, `npm run typecheck`, `npm run lint`, `npm run build` -> pass; Edge Function deployment follows the commit)
 
 Task 5: complete (tests: `npm run test:unit`, `npm run typecheck`, `npm run lint`, `npm run build` -> pass; retention reuses the existing ownership-checked cleanup RPC with 7/30/90/365-day UI choices)
+
+Final review: self-review (no subagent tool). `git diff --check` clean; remote migration list synchronized; no Critical or Important findings identified in the reviewed diff. Deferred: external email/WhatsApp/PWA push providers require separate provider credentials and delivery policy.
