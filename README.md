@@ -25,7 +25,7 @@ Without Supabase public settings, the dashboard runs in demo mode and stores dem
    supabase functions deploy telegram-link-token
    ```
 
-6. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `WORKER_SECRET`, and `TELEGRAM_WEBHOOK_SECRET` as Supabase Function secrets. Supabase provides its project URL and service-role key to Edge Functions. Never add service-role values to a `NEXT_PUBLIC_*` variable.
+6. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `WORKER_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, and `TELEGRAM_ALLOWED_USER_IDS` as Supabase Function secrets. `TELEGRAM_ALLOWLIST_REQUIRED` defaults to `true`, so an empty allowlist rejects all Telegram users. Supabase provides its project URL and service-role key to Edge Functions. Never add service-role values to a `NEXT_PUBLIC_*` variable.
 7. Configure Telegram's webhook URL as `https://<project-ref>.supabase.co/functions/v1/telegram-webhook` and use the exact `TELEGRAM_WEBHOOK_SECRET` value as Telegram's `secret_token`. Use a secret manager or protected operator session; do not put the bot token in source control or a shared shell history.
 8. Deploy the Next.js frontend to Vercel or another Node-compatible host, set the two public Supabase environment variables there, and add the deployed URL to Supabase Auth redirect URLs.
 
@@ -72,7 +72,7 @@ PostgreSQL is the source of truth. Recurring reminders keep one rolling future o
 - Overview, searchable/filterable reminder list, selectable calendar dates, occurrence history, and settings.
 - Pause, resume, complete, delete, and snooze from the web app; Telegram callbacks also support skip and disable.
 - Telegram linking via expiring one-time token; only a hash is stored and redemption is transactional.
-- Telegram commands: `/start`, `/help`, `/reminder`, `/list`, `/today`, `/upcoming`, `/delete`, and `/cancel`. `/reminder` uses inline buttons for category, priority, and repeat choices.
+- Telegram commands: `/start`, `/help`, `/reminder`, `/edit`, `/list`, `/today`, `/upcoming`, `/delete`, and `/cancel`. `/reminder` uses inline buttons for category, priority, repeat, and snooze choices.
 - Local demo mode when public Supabase settings are absent.
 
 ## Install as a PWA

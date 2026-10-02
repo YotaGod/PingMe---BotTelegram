@@ -8,3 +8,5 @@ Task 1: complete (tests: `npm run test:unit`, `npm run typecheck`, `npm run lint
 Task 2: complete (commits d7a528e..pending, tests: `npm run test:unit`, `npm run typecheck`, `npm run lint`, `npm run build` -> pass)
 
 Task 3: complete (tests: `npm run test:unit`, `npm run typecheck`, `npm run lint`, `npm run build` -> pass; database execution remains blocked by unavailable local PostgreSQL)
+
+Task 4: complete (tests: `npm run test:unit`, `npm run typecheck`, `npm run lint`, `npm run build` -> pass; Edge Function deployment follows the commit)

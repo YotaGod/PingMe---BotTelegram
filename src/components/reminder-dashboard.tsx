@@ -737,6 +737,15 @@ export function ReminderDashboard({ section }: { section: Section }) {
   }
 
   async function snoozeReminder(reminder: Reminder) {
+    const rawMinutes = window.prompt(
+      "Tunda berapa menit? Pilih 5, 10, 30, 60, atau 1440 (besok).",
+      "10",
+    );
+    if (rawMinutes === null) return;
+    const minutes = Number(rawMinutes);
+    if (![5, 10, 30, 60, 1440].includes(minutes)) {
+      return setError("Durasi tunda harus 5, 10, 30, 60, atau 1440 menit.");
+    }
     if (supabase) {
       if (!reminder.next_occurrence_id)
         return setError("Occurrence aktif tidak ditemukan. Coba muat ulang.");
@@ -745,7 +754,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
         {
           p_occurrence_id: reminder.next_occurrence_id,
           p_action: "snooze",
-          p_snooze_minutes: 10,
+            p_snooze_minutes: minutes,
         },
       );
       if (actionError) return setError(actionError.message);
@@ -759,7 +768,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
         );
       }
     } else {
-      const snoozedUntil = timeAfterMinutes(10);
+      const snoozedUntil = timeAfterMinutes(minutes);
       persist(
         reminders.map((item) =>
           item.id === reminder.id
@@ -768,7 +777,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
         ),
       );
     }
-    setNotice("Ditunda 10 menit.");
+    setNotice(`Ditunda ${minutes} menit.`);
     window.setTimeout(() => setNotice(""), 2600);
   }
 

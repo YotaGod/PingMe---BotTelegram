@@ -1,5 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { handleTelegramCallback, handleTelegramMessage } from "./commands.ts";
+import {
+  isAllowedTelegramUser as checkAllowedTelegramUser,
+  SNOOZE_OPTIONS,
+} from "../_shared/telegram-policy.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -25,12 +29,12 @@ async function telegramRequest(
 
 function isAllowedTelegramUser(telegramUserId: number) {
   const configured = Deno.env.get("TELEGRAM_ALLOWED_USER_IDS")?.trim();
-  if (!configured) return true;
-  const allowed = configured
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  return allowed.includes(String(telegramUserId));
+  const requireAllowlist = Deno.env.get("TELEGRAM_ALLOWLIST_REQUIRED") !== "false";
+  return checkAllowedTelegramUser(
+    String(telegramUserId),
+    configured,
+    requireAllowlist,
+  );
 }
 
 Deno.serve(async (request) => {
@@ -146,7 +150,30 @@ Deno.serve(async (request) => {
       });
       return json({ ok: true });
     }
-    const [action, occurrenceId] = String(callback.data).split("|");
+    const [action, occurrenceId, minutesText] = String(callback.data).split("|");
+    if (action === "snooze_menu" && /^[0-9a-f-]{36}$/i.test(occurrenceId ?? "")) {
+      await telegramRequest(botToken, "answerCallbackQuery", {
+        callback_query_id: callback.id,
+        text: "Pilih durasi tunda.",
+      });
+      await telegramRequest(botToken, "sendMessage", {
+        chat_id: callback.message?.chat.id,
+        text: "⏰ Tunda reminder untuk:",
+        reply_markup: {
+          inline_keyboard: [
+            SNOOZE_OPTIONS.slice(0, 3).map((minutes) => ({
+              text: `${minutes} menit`,
+              callback_data: `snooze|${occurrenceId}|${minutes}`,
+            })),
+            SNOOZE_OPTIONS.slice(3).map((minutes) => ({
+              text: minutes === 1440 ? "Besok" : `${minutes / 60} jam`,
+              callback_data: `snooze|${occurrenceId}|${minutes}`,
+            })),
+          ],
+        },
+      });
+      return json({ ok: true });
+    }
     const allowed = new Set(["complete", "snooze", "skip", "disable"]);
     if (!allowed.has(action) || !/^[0-9a-f-]{36}$/i.test(occurrenceId ?? "")) {
       await telegramRequest(botToken, "answerCallbackQuery", {
@@ -156,11 +183,20 @@ Deno.serve(async (request) => {
       });
       return json({ ok: true });
     }
+    const snoozeMinutes = action === "snooze" ? Number(minutesText ?? 10) : 10;
+    if (action === "snooze" && !SNOOZE_OPTIONS.includes(snoozeMinutes as (typeof SNOOZE_OPTIONS)[number])) {
+      await telegramRequest(botToken, "answerCallbackQuery", {
+        callback_query_id: callback.id,
+        text: "Durasi tunda tidak valid.",
+        show_alert: true,
+      });
+      return json({ ok: true });
+    }
     const { error } = await db.rpc("apply_telegram_occurrence_action", {
       p_telegram_user_id: String(callback.from.id),
       p_occurrence_id: occurrenceId,
       p_action: action,
-      p_snooze_minutes: 10,
+      p_snooze_minutes: snoozeMinutes,
     });
     if (error) {
       console.error(
@@ -183,7 +219,7 @@ Deno.serve(async (request) => {
         : action === "complete"
           ? "Ditandai selesai."
           : action === "snooze"
-            ? "Ditunda 10 menit untuk reminder hari ini."
+            ? `Ditunda ${snoozeMinutes} menit.`
             : action === "skip"
               ? "Jadwal ini dilewati."
               : "Pengingat dinonaktifkan.",
