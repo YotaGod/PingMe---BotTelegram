@@ -15,6 +15,9 @@ import {
   CheckCheck,
   ChevronDown,
   Clock3,
+  Database,
+  Pencil,
+  Eraser,
   Filter,
   LayoutDashboard,
   ListTodo,
@@ -645,6 +648,85 @@ export function ReminderDashboard({ section }: { section: Section }) {
     persist(reminders.filter((item) => item.id !== reminder.id));
   }
 
+  async function removeInactiveReminders() {
+    const inactiveStatuses = ["completed", "cancelled", "disabled"] as const;
+    const inactive = reminders.filter((item) =>
+      inactiveStatuses.includes(item.status as (typeof inactiveStatuses)[number]),
+    );
+    if (!inactive.length) {
+      setNotice("Tidak ada reminder nonaktif untuk dihapus.");
+      window.setTimeout(() => setNotice(""), 2600);
+      return;
+    }
+    if (
+      !window.confirm(
+        `Hapus ${inactive.length} reminder nonaktif beserta riwayatnya? Tindakan ini tidak dapat dibatalkan.`,
+      )
+    )
+      return;
+    if (supabase) {
+      const { error: deleteError } = await supabase
+        .from("reminders")
+        .delete()
+        .in("status", [...inactiveStatuses]);
+      if (deleteError) return setError(deleteError.message);
+      try {
+        persist(await fetchReminders(supabase));
+      } catch (loadError) {
+        return setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Data terbaru gagal dimuat.",
+        );
+      }
+    } else {
+      persist(
+        reminders.filter(
+          (item) => !inactiveStatuses.includes(item.status as (typeof inactiveStatuses)[number]),
+        ),
+      );
+    }
+    setNotice(`${inactive.length} reminder nonaktif berhasil dihapus.`);
+    window.setTimeout(() => setNotice(""), 2600);
+  }
+
+  async function cleanOldData() {
+    if (!supabase) {
+      setNotice("Pembersihan database tersedia setelah masuk ke akun.");
+      window.setTimeout(() => setNotice(""), 2600);
+      return;
+    }
+    if (
+      !window.confirm(
+        "Hapus log notifikasi dan occurrence selesai lebih lama dari 30 hari? Reminder aktif dan jadwal yang belum selesai akan tetap aman.",
+      )
+    )
+      return;
+    const { data, error: cleanupError } = await supabase.rpc(
+      "cleanup_user_reminder_data",
+      { p_keep_days: 30 },
+    );
+    if (cleanupError) return setError(cleanupError.message);
+    const result = (data ?? {}) as {
+      notification_logs?: number;
+      reminder_occurrences?: number;
+      reminder_channels?: number;
+    };
+    try {
+      setHistory(await fetchHistory(supabase));
+    } catch (loadError) {
+      return setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Riwayat gagal dimuat ulang.",
+      );
+    }
+    setNotice(
+      `Database dibersihkan: ${result.notification_logs ?? 0} log, ${result.reminder_occurrences ?? 0} occurrence, dan ${result.reminder_channels ?? 0} channel dihapus.`,
+    );
+    window.setTimeout(() => setNotice(""), 4200);
+  }
+
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
     window.location.assign("/");
@@ -834,9 +916,17 @@ export function ReminderDashboard({ section }: { section: Section }) {
                     Keep the things you care about within reach.
                   </p>
                 </div>
-                <button className="primary-button" onClick={openCreate}>
-                  <Plus size={17} /> New reminder
-                </button>
+                <div className="heading-actions">
+                  <button className="secondary-button" onClick={cleanOldData}>
+                    <Database size={16} /> Bersihkan data lama
+                  </button>
+                  <button className="secondary-button" onClick={removeInactiveReminders}>
+                    <Eraser size={16} /> Hapus nonaktif
+                  </button>
+                  <button className="primary-button" onClick={openCreate}>
+                    <Plus size={17} /> New reminder
+                  </button>
+                </div>
               </div>
               <ReminderTable
                 reminders={filtered}
@@ -1172,6 +1262,9 @@ function ReminderRow({
           : reminder.schedule_type}
       </span>
       <div className="row-actions">
+        <button aria-label="Edit reminder" onClick={() => onEdit(reminder)}>
+          <Pencil size={15} />
+        </button>
         <button aria-label="Tunda 10 menit" onClick={onSnooze}>
           <Clock3 size={15} />
         </button>
@@ -1297,6 +1390,9 @@ function ReminderTable({
                 {item.status}
               </span>
               <div className="table-actions">
+                <button aria-label="Edit reminder" onClick={() => onEdit(item)}>
+                  <Pencil size={15} />
+                </button>
                 <button
                   aria-label="Tunda 10 menit"
                   onClick={() => onSnooze(item)}

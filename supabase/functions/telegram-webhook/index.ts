@@ -23,6 +23,16 @@ async function telegramRequest(
   });
 }
 
+function isAllowedTelegramUser(telegramUserId: number) {
+  const configured = Deno.env.get("TELEGRAM_ALLOWED_USER_IDS")?.trim();
+  if (!configured) return true;
+  const allowed = configured
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return allowed.includes(String(telegramUserId));
+}
+
 Deno.serve(async (request) => {
   if (request.method !== "POST")
     return json({ error: "Method not allowed" }, 405);
@@ -44,6 +54,13 @@ Deno.serve(async (request) => {
   });
   const message = update.message;
   if (message?.text && typeof message.from?.id === "number") {
+    if (!isAllowedTelegramUser(message.from.id)) {
+      await telegramRequest(botToken, "sendMessage", {
+        chat_id: message.chat.id,
+        text: "Bot ini bersifat privat dan hanya dapat digunakan oleh pemiliknya.",
+      });
+      return json({ ok: true });
+    }
     const match = /^\/start(?:@\w+)?\s+link_([A-Za-z0-9_-]{20,64})$/.exec(
       message.text.trim(),
     );
@@ -103,6 +120,14 @@ Deno.serve(async (request) => {
 
   const callback = update.callback_query;
   if (callback?.data && typeof callback.from?.id === "number") {
+    if (!isAllowedTelegramUser(callback.from.id)) {
+      await telegramRequest(botToken, "answerCallbackQuery", {
+        callback_query_id: callback.id,
+        text: "Bot ini bersifat privat.",
+        show_alert: true,
+      });
+      return json({ ok: true });
+    }
     try {
       if (await handleTelegramCallback(db, botToken, callback))
         return json({ ok: true });

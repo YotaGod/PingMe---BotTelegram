@@ -502,7 +502,12 @@ async function listReminders(
     .from("reminders")
     .select("id,title,category,priority,schedule_type,timezone,start_at,status")
     .eq("user_id", userId)
-    .eq("status", "active")
+    .in(
+      "status",
+      mode === "delete"
+        ? ["active", "paused", "completed", "cancelled", "disabled"]
+        : ["active"],
+    )
     .order("start_at", { ascending: true })
     .limit(50);
   if (error || !reminders?.length) {
@@ -510,7 +515,7 @@ async function listReminders(
       botToken,
       chatId,
       mode === "delete"
-        ? "Tidak ada pengingat aktif untuk dihapus."
+        ? "Tidak ada pengingat yang dapat ditampilkan."
         : "Belum ada pengingat aktif. Ketik /reminder untuk membuat yang baru.",
       commandKeyboard,
     );
@@ -518,16 +523,28 @@ async function listReminders(
   }
 
   if (mode === "delete") {
-    await sendMessage(botToken, chatId, "Pilih pengingat yang ingin dihapus:", {
-      inline_keyboard: reminders
-        .slice(0, 20)
-        .map((reminder: Record<string, any>) => [
-          {
-            text: `🗑 ${String(reminder.title).slice(0, 45)}`,
-            callback_data: `delete-reminder|${reminder.id}`,
-          },
-        ]),
-    });
+    const statusLabel: Record<string, string> = {
+      active: "🟢 Aktif",
+      paused: "⏸ Dijeda",
+      completed: "✅ Selesai",
+      cancelled: "🚫 Dibatalkan",
+      disabled: "⛔ Nonaktif",
+    };
+    await sendMessage(
+      botToken,
+      chatId,
+      "Pilih pengingat yang ingin dihapus. Status ditampilkan di setiap tombol:\n🟢 Aktif · ⏸ Dijeda · ✅ Selesai · 🚫 Dibatalkan · ⛔ Nonaktif",
+      {
+        inline_keyboard: reminders
+          .slice(0, 20)
+          .map((reminder: Record<string, any>) => [
+            {
+              text: `${statusLabel[String(reminder.status)] ?? "⚪ Tidak diketahui"} · ${String(reminder.title).slice(0, 38)}`,
+              callback_data: `delete-reminder|${reminder.id}`,
+            },
+          ]),
+      },
+    );
     return;
   }
 
@@ -773,28 +790,50 @@ export async function handleTelegramCallback(
       );
       return true;
     }
+    await answerCallback(botToken, callback, "Menghapus pengingat...");
     const { data, error } = await db
       .from("reminders")
       .delete()
       .eq("id", value)
       .eq("user_id", integration.user_id)
-      .select("id")
-      .maybeSingle();
-    await answerCallback(
-      botToken,
-      callback,
-      error || !data
-        ? "Tidak dapat menghapus pengingat."
-        : "Pengingat dihapus.",
-      Boolean(error || !data),
-    );
-    if (!error && data && callback.message?.chat.id)
+      .select("id");
+    const deleted = Array.isArray(data) && data.length > 0;
+    if (callback.message?.chat.id) {
       await sendMessage(
         botToken,
         callback.message.chat.id,
-        "🗑 Pengingat berhasil dihapus.",
+        error
+          ? "⚠️ Pengingat tidak dapat dihapus. Coba lagi atau hapus dari dashboard."
+          : deleted
+            ? "🗑 Pengingat berhasil dihapus."
+            : "Pengingat sudah tidak ditemukan atau bukan milik akun ini.",
         commandKeyboard,
       );
+      if (!error && deleted && callback.message.message_id) {
+        await fetch(`https://api.telegram.org/bot${botToken}/editMessageReplyMarkup`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            chat_id: callback.message.chat.id,
+            message_id: callback.message.message_id,
+            reply_markup: { inline_keyboard: [] },
+          }),
+        });
+      }
+    }
+    if (error) {
+      console.error(
+        JSON.stringify({
+          event: "telegram_delete_reminder_failed",
+          reminder_id: value,
+          telegram_user_id: telegramUserId,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        }),
+      );
+    }
     return true;
   }
 

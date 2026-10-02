@@ -449,6 +449,12 @@ textarea:focus-visible {
   letter-spacing: 0;
   line-height: 1.16;
 }
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .heading-period {
   color: var(--coral);
 }
@@ -2207,12 +2213,18 @@ textarea:focus-visible {
     font-size: 10px;
     line-height: 1.5;
   }
-  .page-heading > .primary-button {
+  .page-heading > .primary-button,
+  .heading-actions .secondary-button,
+  .heading-actions .primary-button {
     min-height: 34px;
     gap: 5px;
     padding: 0 9px;
     font-size: 9px;
     white-space: nowrap;
+  }
+  .heading-actions {
+    justify-content: flex-start;
+    gap: 6px;
   }
   .hero-strip {
     min-height: 208px;
