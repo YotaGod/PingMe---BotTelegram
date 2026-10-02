@@ -137,6 +137,39 @@ function displayDate(value: string, timezone: string) {
   }).format(new Date(value));
 }
 
+function isOccurrenceOnReminderSchedule(
+  reminder: Record<string, any>,
+  scheduledAt: string,
+) {
+  const timezone = reminder.timezone ?? "Asia/Jakarta";
+  const scheduleType = String(reminder.schedule_type);
+  if (scheduleType === "one_time") {
+    return (
+      localDate(scheduledAt, timezone) === localDate(reminder.start_at, timezone)
+    );
+  }
+  const rule = reminder.recurrence_rule ?? {};
+  const frequency = String(rule.frequency ?? "");
+  if (frequency === "daily") return true;
+  if (frequency === "monthly") {
+    const day = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      day: "numeric",
+    }).format(new Date(scheduledAt));
+    return Number(day) === Number(rule.day);
+  }
+  if (frequency === "weekly") {
+    const weekday = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "long",
+    })
+      .format(new Date(scheduledAt))
+      .toLowerCase();
+    return Array.isArray(rule.days) && rule.days.includes(weekday);
+  }
+  return true;
+}
+
 function formatRecurrence(draft: WizardDraft) {
   switch (draft.repeat) {
     case "daily":
@@ -669,6 +702,11 @@ async function listReminders(
       reminder &&
       localDate(occurrence.scheduled_at, reminder.timezone ?? timezone) !==
         todayKey
+    )
+      continue;
+    if (
+      reminder &&
+      !isOccurrenceOnReminderSchedule(reminder, occurrence.scheduled_at)
     )
       continue;
     const existing = nextByReminder.get(occurrence.reminder_id);
