@@ -71,4 +71,4 @@ See [SECURITY.md](./docs/SECURITY.md) before deployment.
 
 ## License
 
-Not decided yet. Add a license before publishing the repository as open source.
+This project is licensed under the [MIT License](./LICENSE).

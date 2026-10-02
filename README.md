@@ -71,4 +71,4 @@ Lihat [SECURITY.md](./docs/SECURITY.md) sebelum deployment.
 
 ## Lisensi
 
-Belum ditentukan. Tambahkan lisensi sebelum repository dipublikasikan sebagai open-source.
+Proyek ini menggunakan [MIT License](./LICENSE).
