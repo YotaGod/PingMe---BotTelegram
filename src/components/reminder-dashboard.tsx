@@ -70,6 +70,26 @@ type ReminderHistory = {
   category: string;
   timezone: string;
 };
+type ReminderHealth = {
+  failed_occurrences: number;
+  stale_occurrences: number;
+  recent_failures: Array<{
+    occurrence_id: string;
+    created_at: string;
+    title: string;
+    error_message: string | null;
+    attempt_number: number;
+  }>;
+  worker: {
+    started_at: string | null;
+    finished_at: string | null;
+    claimed_count: number;
+    sent_count: number;
+    failed_count: number;
+    last_error: string | null;
+    updated_at: string | null;
+  };
+};
 const weekdayLabels = ["S", "S", "R", "K", "J", "S", "M"];
 const pickerDayLabels = ["M", "S", "S", "R", "K", "J", "S"];
 const weekDayNames = [
@@ -223,6 +243,11 @@ async function fetchHistory(
     };
   });
 }
+async function fetchHealth(supabase: SupabaseClient): Promise<ReminderHealth> {
+  const { data, error } = await supabase.rpc("get_reminder_health");
+  if (error) throw error;
+  return data as ReminderHealth;
+}
 function greeting() {
   const hour = new Date().getHours();
   return hour < 11
@@ -249,6 +274,8 @@ export function ReminderDashboard({ section }: { section: Section }) {
     supabase ? [] : demoReminders,
   );
   const [history, setHistory] = useState<ReminderHistory[]>([]);
+  const [health, setHealth] = useState<ReminderHealth | null>(null);
+  const [healthBusy, setHealthBusy] = useState(false);
   const [busy, setBusy] = useState(true);
   const [isDemo] = useState(!supabase);
   const [hasSession, setHasSession] = useState(!supabase);
@@ -358,6 +385,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
       try {
         setReminders(await fetchReminders(supabase));
         setHistory(await fetchHistory(supabase));
+        setHealth(await fetchHealth(supabase));
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -372,6 +400,55 @@ export function ReminderDashboard({ section }: { section: Section }) {
       alive = false;
     };
   }, [supabase]);
+
+  async function refreshHealth() {
+    if (!supabase) return;
+    setHealthBusy(true);
+    try {
+      setHealth(await fetchHealth(supabase));
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Status pengiriman gagal dimuat.",
+      );
+    } finally {
+      setHealthBusy(false);
+    }
+  }
+
+  async function retryFailedOccurrence(occurrenceId: string) {
+    if (!supabase) return;
+    setHealthBusy(true);
+    const { error: retryError } = await supabase.rpc(
+      "retry_failed_occurrence",
+      { p_occurrence_id: occurrenceId },
+    );
+    if (retryError) {
+      setError(retryError.message);
+      setHealthBusy(false);
+      return;
+    }
+    await refreshHealth();
+    setNotice("Notifikasi dimasukkan kembali ke antrean.");
+    window.setTimeout(() => setNotice(""), 2600);
+  }
+
+  async function repairStaleOccurrences() {
+    if (!supabase) return;
+    setHealthBusy(true);
+    const { data, error: repairError } = await supabase.rpc(
+      "repair_stale_occurrences",
+    );
+    if (repairError) {
+      setError(repairError.message);
+      setHealthBusy(false);
+      return;
+    }
+    await refreshHealth();
+    setNotice(`${Number(data ?? 0)} occurrence macet dimasukkan kembali ke antrean.`);
+    window.setTimeout(() => setNotice(""), 3200);
+  }
 
   const active = useMemo(
     () => reminders.filter((reminder) => reminder.status === "active"),
@@ -1094,6 +1171,15 @@ export function ReminderDashboard({ section }: { section: Section }) {
                   <Plus size={17} /> New reminder
                 </button>
               </div>
+              {!isDemo && (
+                <ReliabilityPanel
+                  health={health}
+                  busy={healthBusy}
+                  onRefresh={refreshHealth}
+                  onRepair={repairStaleOccurrences}
+                  onRetry={retryFailedOccurrence}
+                />
+              )}
               <section className="hero-strip">
                 <div className="hero-copy">
                   <div className="hero-kicker">
@@ -1586,6 +1672,80 @@ function LoadingRows() {
       <i />
       <i />
     </div>
+  );
+}
+
+function ReliabilityPanel({
+  health,
+  busy,
+  onRefresh,
+  onRepair,
+  onRetry,
+}: {
+  health: ReminderHealth | null;
+  busy: boolean;
+  onRefresh: () => void;
+  onRepair: () => void;
+  onRetry: (occurrenceId: string) => void;
+}) {
+  if (!health)
+    return (
+      <section className="reliability-panel reliability-loading" aria-label="Status pengiriman">
+        Memeriksa status pengiriman...
+      </section>
+    );
+  const attention = health.failed_occurrences + health.stale_occurrences;
+  return (
+    <section className="reliability-panel" aria-labelledby="reliability-title">
+      <div className="reliability-heading">
+        <div>
+          <p className="metric-label">RELIABILITY CENTER</p>
+          <h2 id="reliability-title">
+            {attention ? "Perlu perhatian" : "Pengiriman berjalan normal"}
+          </h2>
+          <p>
+            {health.failed_occurrences} gagal · {health.stale_occurrences} occurrence macet
+          </p>
+        </div>
+        <button
+          className="secondary-button"
+          onClick={onRefresh}
+          disabled={busy}
+        >
+          Periksa lagi
+        </button>
+      </div>
+      <div className="reliability-stats">
+        <span>Worker terakhir: {health.worker.finished_at ? shortDate(health.worker.finished_at) + " " + timeOf(health.worker.finished_at) : "Belum ada data"}</span>
+        <span>Dikirim sesi terakhir: {health.worker.sent_count}</span>
+      </div>
+      {health.stale_occurrences > 0 && (
+        <button className="secondary-button" onClick={onRepair} disabled={busy}>
+          Pulihkan occurrence macet
+        </button>
+      )}
+      {health.recent_failures.length > 0 ? (
+        <div className="reliability-failures">
+          {health.recent_failures.slice(0, 3).map((failure) => (
+            <div className="reliability-failure" key={`${failure.occurrence_id}-${failure.created_at}`}>
+              <div>
+                <strong>{failure.title}</strong>
+                <span>{failure.error_message ?? "Pengiriman gagal"}</span>
+              </div>
+              <button
+                className="secondary-button"
+                onClick={() => onRetry(failure.occurrence_id)}
+                disabled={busy}
+              >
+                Coba lagi
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="reliability-empty">Belum ada pengiriman gagal yang perlu ditangani.</p>
+      )}
+    </section>
   );
 }
 

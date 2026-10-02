@@ -1640,6 +1640,73 @@ textarea:focus-visible {
   color: #6e8673;
   font-size: 10px;
 }
+.reliability-panel {
+  display: grid;
+  gap: 12px;
+  margin: -4px 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 15px 17px;
+}
+.reliability-loading,
+.reliability-empty {
+  color: var(--muted);
+  font-size: 11px;
+}
+.reliability-heading,
+.reliability-failure,
+.reliability-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.reliability-heading h2 {
+  margin: 3px 0;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 500;
+}
+.reliability-heading p:not(.metric-label),
+.reliability-stats,
+.reliability-failure span,
+.reliability-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+.reliability-stats {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.reliability-failures {
+  display: grid;
+  gap: 8px;
+}
+.reliability-failure {
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+}
+.reliability-failure > div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+.reliability-failure strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-theme="dark"] .reliability-panel {
+  background: #11271e;
+}
 
 /* Create/edit dialog */
 .modal-backdrop {

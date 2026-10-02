@@ -6,3 +6,5 @@ Task 1: Ruling: local pgTAP could not run because PostgreSQL was not listening o
 Task 1: complete (tests: `npm run test:unit`, `npm run typecheck`, `npm run lint`, `npm run build` -> pass; `npm run test:db` -> environment blocked)
 
 Task 2: complete (commits d7a528e..pending, tests: `npm run test:unit`, `npm run typecheck`, `npm run lint`, `npm run build` -> pass)
+
+Task 3: complete (tests: `npm run test:unit`, `npm run typecheck`, `npm run lint`, `npm run build` -> pass; database execution remains blocked by unavailable local PostgreSQL)

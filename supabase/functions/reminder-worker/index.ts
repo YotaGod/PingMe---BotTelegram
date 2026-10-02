@@ -37,6 +37,17 @@ Deno.serve(async (request) => {
   const db = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const startedAt = new Date().toISOString();
+  await db.from("worker_health").upsert({
+    id: true,
+    started_at: startedAt,
+    finished_at: null,
+    claimed_count: 0,
+    sent_count: 0,
+    failed_count: 0,
+    last_error: null,
+    updated_at: startedAt,
+  });
   console.log(
     JSON.stringify({
       event: "worker_started",
@@ -49,6 +60,16 @@ Deno.serve(async (request) => {
     { p_batch_size: 40 },
   );
   if (claimError) {
+    await db.from("worker_health").upsert({
+      id: true,
+      started_at: startedAt,
+      finished_at: new Date().toISOString(),
+      claimed_count: 0,
+      sent_count: 0,
+      failed_count: 1,
+      last_error: claimError.message.slice(0, 500),
+      updated_at: new Date().toISOString(),
+    });
     console.error(
       JSON.stringify({
         event: "worker_claim_failed",
@@ -57,6 +78,7 @@ Deno.serve(async (request) => {
     );
     return json({ error: "Could not claim due reminders" }, 500);
   }
+
   console.log(
     JSON.stringify({
       event: "worker_claimed_batch",
@@ -284,5 +306,15 @@ Deno.serve(async (request) => {
     }
   }
 
+  await db.from("worker_health").upsert({
+    id: true,
+    started_at: startedAt,
+    finished_at: new Date().toISOString(),
+    claimed_count: claimed?.length ?? 0,
+    sent_count: sent,
+    failed_count: failed,
+    last_error: failed ? "One or more notifications failed" : null,
+    updated_at: new Date().toISOString(),
+  });
   return json({ claimed: claimed?.length ?? 0, sent, failed });
 });
