@@ -235,6 +235,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
   const [error, setError] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -781,7 +782,14 @@ export function ReminderDashboard({ section }: { section: Section }) {
             <Settings2 size={14} />
           </button>
         </div>
-        <div className="profile-mini">
+        <button
+          className="profile-mini"
+          onClick={() => {
+            setMobileNav(false);
+            window.location.assign("/settings");
+          }}
+          aria-label="Buka pengaturan profil"
+        >
           <div className="avatar avatar-small">
             {userName.slice(0, 1).toUpperCase()}
           </div>
@@ -790,7 +798,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
             <small>Personal space</small>
           </span>
           <ChevronDown size={14} />
-        </div>
+        </button>
         <p className="nav-caption">MENU</p>
         <nav className="main-nav" aria-label="Navigasi utama">
           {nav.map(({ id, label, icon: Icon }) => (
@@ -880,14 +888,33 @@ export function ReminderDashboard({ section }: { section: Section }) {
               }).format(new Date())}
             </span>
             <span className="top-divider" />
-            <Link
-              href="/settings"
+            <div className="notification-wrap">
+            <button
               className="notification-button"
-              aria-label="Buka pengaturan notifikasi"
+              onClick={() => setNotificationsOpen((open) => !open)}
+              aria-label="Buka notifikasi"
+              aria-expanded={notificationsOpen}
             >
               <Bell size={17} />
-              <i />
-            </Link>
+              {telegramEnabled && <i />}
+            </button>
+            {notificationsOpen && (
+              <div className="notification-popover" role="status">
+                <strong>Notifikasi</strong>
+                <p>
+                  {telegramEnabled
+                    ? "Notifikasi Telegram aktif untuk reminder Anda."
+                    : "Notifikasi Telegram sedang nonaktif."}
+                </p>
+                <Link
+                  href="/settings"
+                  onClick={() => setNotificationsOpen(false)}
+                >
+                  Kelola notifikasi
+                </Link>
+              </div>
+            )}
+            </div>
             <button
               className="theme-toggle"
               onClick={toggleTheme}
@@ -1410,7 +1437,7 @@ function ReminderTable({
             <article className="table-row" key={item.id}>
               <div className="table-reminder">
                 <button
-                  className="complete-button compact-check"
+                  className={`complete-button compact-check ${item.status === "completed" ? "is-completed" : ""}`}
                   onClick={() => onComplete(item)}
                   aria-label={`Tandai ${item.title} selesai`}
                 >

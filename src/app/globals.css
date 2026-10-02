@@ -140,11 +140,21 @@ textarea:focus-visible {
 }
 .profile-mini {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 10px;
   border: 1px solid #edf0eb;
   border-radius: 7px;
+  background: var(--paper);
+  color: inherit;
+  cursor: pointer;
   padding: 10px 9px;
+  text-align: left;
+}
+.profile-mini:hover,
+.profile-mini:focus-visible {
+  border-color: #c7dbc8;
+  background: #f5f8f3;
 }
 .profile-mini > span,
 .sidebar-user > span {
@@ -322,6 +332,37 @@ textarea:focus-visible {
   background: transparent;
   color: #64786b;
   cursor: pointer;
+}
+.notification-wrap {
+  position: relative;
+}
+.notification-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(270px, calc(100vw - 32px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 12px 30px rgb(24 50 36 / 14%);
+  padding: 14px;
+}
+.notification-popover strong {
+  display: block;
+  color: var(--ink);
+  font-size: 12px;
+}
+.notification-popover p {
+  margin: 6px 0 11px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.notification-popover a {
+  color: var(--green-dark);
+  font-size: 10px;
+  font-weight: 700;
 }
 .notification-button:hover {
   background: #f3f6f1;
@@ -873,6 +914,11 @@ textarea:focus-visible {
     background 0.18s;
 }
 .complete-button:hover {
+  border-color: #70a07c;
+  background: #eff7ee;
+  color: #4f855e;
+}
+.complete-button.is-completed {
   border-color: #70a07c;
   background: #eff7ee;
   color: #4f855e;
@@ -2002,6 +2048,7 @@ textarea:focus-visible {
 }
 [data-theme="dark"] .nav-link:hover,
 [data-theme="dark"] .notification-button:hover,
+[data-theme="dark"] .profile-mini:hover,
 [data-theme="dark"] .row-actions button:hover,
 [data-theme="dark"] .table-actions button:hover {
   background: #274437;
@@ -2071,7 +2118,29 @@ textarea:focus-visible {
 [data-theme="dark"] .weekday-picker button,
 [data-theme="dark"] .reminder-dialog form > footer {
   background: #1d3228;
-  color: var(--ink);
+  color: transparent;
+}
+[data-theme="dark"] .complete-button.is-completed {
+  background: #244c35;
+  color: #b7e8c5;
+}
+[data-theme="dark"] .hero-copy h2 {
+  color: #e4f4e7;
+}
+[data-theme="dark"] .hero-copy h2 em {
+  color: #a9d8b5;
+}
+[data-theme="dark"] .hero-kicker,
+[data-theme="dark"] .hero-foot {
+  color: #b7d4be;
+}
+[data-theme="dark"] .hero-foot a,
+[data-theme="dark"] .hero-note strong,
+[data-theme="dark"] .hero-note > span:last-child {
+  color: #e4f4e7;
+}
+[data-theme="dark"] .notification-popover {
+  box-shadow: 0 12px 30px rgb(0 0 0 / 35%);
 }
 [data-theme="dark"] .modal-backdrop,
 [data-theme="dark"] .reminder-dialog-backdrop {
