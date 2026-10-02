@@ -602,7 +602,7 @@ async function listReminders(
     .eq("user_id", userId)
     .in(
       "status",
-      mode === "list" || mode === "today" || mode === "delete" || mode === "edit"
+      mode === "today" || mode === "delete" || mode === "edit"
         ? ["active", "paused", "completed", "cancelled", "disabled"]
         : ["active"],
     )
@@ -757,7 +757,7 @@ async function listReminders(
       ? "📅 Reminder Hari Ini"
       : mode === "upcoming"
         ? "🔭 Reminder Mendatang"
-        : "📋 Semua Reminder";
+        : "📋 Reminder Aktif";
   const lines = rows.map(({ reminder, scheduledAt }, index) => {
     const priority =
       reminder.priority === "high"
