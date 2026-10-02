@@ -259,7 +259,6 @@ async function startEditReminder(
     .select("id,title,message,category,priority,timezone,start_at,schedule_type,recurrence_rule")
     .eq("id", reminderId)
     .eq("user_id", userId)
-    .eq("status", "active")
     .maybeSingle();
   if (error || !reminder) {
     await answerCallback(botToken, callback, "Reminder tidak ditemukan.", true);
@@ -570,7 +569,7 @@ async function listReminders(
     .eq("user_id", userId)
     .in(
       "status",
-      mode === "list" || mode === "today" || mode === "delete"
+      mode === "list" || mode === "today" || mode === "delete" || mode === "edit"
         ? ["active", "paused", "completed", "cancelled", "disabled"]
         : ["active"],
     )
@@ -583,7 +582,7 @@ async function listReminders(
       mode === "delete"
         ? "Tidak ada pengingat yang dapat ditampilkan."
         : mode === "edit"
-          ? "Tidak ada reminder aktif untuk diedit."
+          ? "Tidak ada reminder untuk diedit."
         : "Belum ada pengingat aktif. Ketik /reminder untuk membuat yang baru.",
       commandKeyboard,
     );
@@ -617,7 +616,7 @@ async function listReminders(
   }
 
   if (mode === "edit") {
-    await sendMessage(botToken, chatId, "Pilih reminder aktif yang ingin diedit:", {
+    await sendMessage(botToken, chatId, "Pilih reminder yang ingin diedit (termasuk yang sudah selesai):", {
       inline_keyboard: reminders
         .slice(0, 20)
         .map((reminder: Record<string, any>) => [
