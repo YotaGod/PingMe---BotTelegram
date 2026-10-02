@@ -29,7 +29,9 @@ import {
   Search,
   Settings2,
   Sparkles,
+  Moon,
   Trash2,
+  Sun,
   X,
 } from "lucide-react";
 import { demoReminders } from "@/lib/demo-data";
@@ -38,6 +40,7 @@ import type { Reminder, ScheduleType } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Section = "dashboard" | "reminders" | "calendar" | "history" | "settings";
+type Theme = "light" | "dark";
 type Draft = {
   title: string;
   message: string;
@@ -201,6 +204,15 @@ function greeting() {
         : "Malam";
 }
 
+function initialTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+  const saved = window.localStorage.getItem("pingme-theme");
+  if (saved === "dark" || saved === "light") return saved;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
 export function ReminderDashboard({ section }: { section: Section }) {
   const supabase = getSupabase();
   const [reminders, setReminders] = useState<Reminder[]>(() =>
@@ -222,6 +234,18 @@ export function ReminderDashboard({ section }: { section: Section }) {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  function toggleTheme() {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    window.localStorage.setItem("pingme-theme", nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+  }
 
   useEffect(() => {
     const timeout = window.setTimeout(
@@ -651,7 +675,9 @@ export function ReminderDashboard({ section }: { section: Section }) {
   async function removeInactiveReminders() {
     const inactiveStatuses = ["completed", "cancelled", "disabled"] as const;
     const inactive = reminders.filter((item) =>
-      inactiveStatuses.includes(item.status as (typeof inactiveStatuses)[number]),
+      inactiveStatuses.includes(
+        item.status as (typeof inactiveStatuses)[number],
+      ),
     );
     if (!inactive.length) {
       setNotice("Tidak ada reminder nonaktif untuk dihapus.");
@@ -682,7 +708,10 @@ export function ReminderDashboard({ section }: { section: Section }) {
     } else {
       persist(
         reminders.filter(
-          (item) => !inactiveStatuses.includes(item.status as (typeof inactiveStatuses)[number]),
+          (item) =>
+            !inactiveStatuses.includes(
+              item.status as (typeof inactiveStatuses)[number],
+            ),
         ),
       );
     }
@@ -745,7 +774,10 @@ export function ReminderDashboard({ section }: { section: Section }) {
         </Link>
         <div className="workspace-label">
           WORKSPACE{" "}
-          <button aria-label="Pengaturan workspace">
+          <button
+            aria-label="Buka pengaturan workspace"
+            onClick={() => window.location.assign("/settings")}
+          >
             <Settings2 size={14} />
           </button>
         </div>
@@ -833,7 +865,8 @@ export function ReminderDashboard({ section }: { section: Section }) {
             onClick={() => setMobileNav(true)}
             aria-label="Buka navigasi"
           >
-            <span />
+            <span className="mobile-menu-glyph" aria-hidden="true" />
+            <span className="mobile-menu-label">Menu</span>
           </button>
           <div className="breadcrumb">
             Workspace <span>/</span> <strong>{heading}</strong>
@@ -847,9 +880,25 @@ export function ReminderDashboard({ section }: { section: Section }) {
               }).format(new Date())}
             </span>
             <span className="top-divider" />
-            <button className="notification-button" aria-label="Notifikasi">
+            <Link
+              href="/settings"
+              className="notification-button"
+              aria-label="Buka pengaturan notifikasi"
+            >
               <Bell size={17} />
               <i />
+            </Link>
+            <button
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Gunakan mode terang" : "Gunakan mode gelap"}
+              aria-pressed={theme === "dark"}
+              title={theme === "dark" ? "Mode terang" : "Mode gelap"}
+            >
+              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+              <span className="sr-only">
+                {theme === "dark" ? "Gunakan mode terang" : "Gunakan mode gelap"}
+              </span>
             </button>
             <Link
               href={supabase ? "/settings" : "/login"}
@@ -920,7 +969,10 @@ export function ReminderDashboard({ section }: { section: Section }) {
                   <button className="secondary-button" onClick={cleanOldData}>
                     <Database size={16} /> Bersihkan data lama
                   </button>
-                  <button className="secondary-button" onClick={removeInactiveReminders}>
+                  <button
+                    className="secondary-button"
+                    onClick={removeInactiveReminders}
+                  >
                     <Eraser size={16} /> Hapus nonaktif
                   </button>
                   <button className="primary-button" onClick={openCreate}>
@@ -963,7 +1015,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
                       .toUpperCase()}
                   </p>
                   <h1>
-                    Good {greeting()}, {userName}
+                    Selamat {greeting()}, {userName}
                     <span className="heading-period">.</span>
                   </h1>
                   <p className="heading-sub">
