@@ -2424,7 +2424,15 @@ textarea:focus-visible {
 }
 @media (max-width: 680px) {
   html {
-    min-width: 320px;
+    min-width: 0;
+    width: 100%;
+    overflow-x: hidden;
+  }
+  body,
+  .app-frame {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
   .reminder-dialog-backdrop,
   .modal-backdrop {

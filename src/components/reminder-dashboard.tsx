@@ -273,15 +273,6 @@ function greeting() {
         : "Malam";
 }
 
-function initialTheme(): Theme {
-  if (typeof window === "undefined") return "light";
-  const saved = window.localStorage.getItem("pingme-theme");
-  if (saved === "dark" || saved === "light") return saved;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
 export function ReminderDashboard({ section }: { section: Section }) {
   const supabase = getSupabase();
   const [reminders, setReminders] = useState<Reminder[]>(() =>
@@ -305,13 +296,25 @@ export function ReminderDashboard({ section }: { section: Section }) {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
-  const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [theme, setTheme] = useState<Theme>("light");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("pingme-theme");
+    const preferred =
+      saved === "dark" || saved === "light"
+        ? saved
+        : window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+    const timer = window.setTimeout(() => setTheme(preferred), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   function toggleTheme() {
     const nextTheme = theme === "dark" ? "light" : "dark";
