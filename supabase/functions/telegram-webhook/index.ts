@@ -27,6 +27,49 @@ async function telegramRequest(
   });
 }
 
+async function getTelegramOccurrenceSummary(
+  db: ReturnType<typeof createClient>,
+  telegramUserId: number,
+  occurrenceId: string,
+) {
+  const { data: integration } = await db
+    .from("user_integrations")
+    .select("user_id")
+    .eq("provider", "telegram")
+    .eq("provider_user_id", String(telegramUserId))
+    .maybeSingle();
+  if (!integration?.user_id) return null;
+
+  const { data: occurrence } = await db
+    .from("reminder_occurrences")
+    .select("reminder_id,scheduled_at,snoozed_until")
+    .eq("id", occurrenceId)
+    .maybeSingle();
+  if (!occurrence) return null;
+
+  const { data: reminder } = await db
+    .from("reminders")
+    .select("title,timezone")
+    .eq("id", occurrence.reminder_id)
+    .eq("user_id", integration.user_id)
+    .maybeSingle();
+  if (!reminder) return null;
+
+  return { ...occurrence, ...reminder };
+}
+
+function formatSnoozedTime(timestamp: string, timezone: string) {
+  return new Intl.DateTimeFormat("id-ID", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: timezone,
+    hour12: false,
+  }).format(new Date(timestamp));
+}
+
 function isAllowedTelegramUser(telegramUserId: number) {
   const configured = Deno.env.get("TELEGRAM_ALLOWED_USER_IDS")?.trim();
   const requireAllowlist = Deno.env.get("TELEGRAM_ALLOWLIST_REQUIRED") !== "false";
@@ -152,13 +195,26 @@ Deno.serve(async (request) => {
     }
     const [action, occurrenceId, minutesText] = String(callback.data).split("|");
     if (action === "snooze_menu" && /^[0-9a-f-]{36}$/i.test(occurrenceId ?? "")) {
+      const summary = await getTelegramOccurrenceSummary(
+        db,
+        callback.from.id,
+        occurrenceId,
+      );
+      if (!summary) {
+        await telegramRequest(botToken, "answerCallbackQuery", {
+          callback_query_id: callback.id,
+          text: "Reminder tidak ditemukan atau sudah tidak aktif.",
+          show_alert: true,
+        });
+        return json({ ok: true });
+      }
       await telegramRequest(botToken, "answerCallbackQuery", {
         callback_query_id: callback.id,
         text: "Pilih durasi tunda.",
       });
       await telegramRequest(botToken, "sendMessage", {
         chat_id: callback.message?.chat.id,
-        text: "⏰ Tunda reminder untuk:",
+        text: `⏰ Tunda reminder\n\n📌 ${summary.title}\nPilih berapa lama reminder ini ditunda:`,
         reply_markup: {
           inline_keyboard: [
             SNOOZE_OPTIONS.slice(0, 3).map((minutes) => ({
@@ -230,6 +286,20 @@ Deno.serve(async (request) => {
         chat_id: callback.message.chat.id,
         message_id: callback.message.message_id,
         reply_markup: { inline_keyboard: [] },
+      });
+    }
+    if (!error && action === "snooze" && callback.message?.chat.id) {
+      const summary = await getTelegramOccurrenceSummary(
+        db,
+        callback.from.id,
+        occurrenceId,
+      );
+      const nextAt = summary?.snoozed_until;
+      await telegramRequest(botToken, "sendMessage", {
+        chat_id: callback.message.chat.id,
+        text: summary && nextAt
+          ? `✅ Reminder ditunda\n\n📌 ${summary.title}\n⏰ Durasi: ${snoozeMinutes} menit\n📅 Akan dikirim: ${formatSnoozedTime(nextAt, summary.timezone)}`
+          : `✅ Reminder ditunda ${snoozeMinutes} menit.`,
       });
     }
     return json({ ok: true });
