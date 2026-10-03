@@ -165,7 +165,12 @@ Deno.serve(async (request) => {
       })
       .select("id")
       .single();
-    const scheduled = new Date(occurrence.scheduled_at);
+    // A snoozed occurrence keeps its original schedule for recurrence
+    // calculations, but delivery and user-facing timestamps must use the
+    // temporary snooze deadline.
+    const scheduled = new Date(
+      occurrence.snoozed_until ?? occurrence.scheduled_at,
+    );
     const late = Date.now() - scheduled.getTime() > 60_000;
     const profile = Array.isArray(reminder.profiles)
       ? reminder.profiles[0]
