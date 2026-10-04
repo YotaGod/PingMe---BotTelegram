@@ -273,7 +273,8 @@ Deno.serve(async (request) => {
           snoozed_until: null,
           last_error: null,
         })
-        .eq("id", occurrence.id);
+        .eq("id", occurrence.id)
+        .eq("status", "processing");
       console.log(
         JSON.stringify({
           event: "notification_sent",
@@ -298,7 +299,8 @@ Deno.serve(async (request) => {
           claimed_at: null,
           last_error: message,
         })
-        .eq("id", occurrence.id);
+        .eq("id", occurrence.id)
+        .eq("status", "processing");
       console.error(
         JSON.stringify({
           event: "notification_failed",
