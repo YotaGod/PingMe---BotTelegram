@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { getNextOccurrence } from "@/lib/recurrence";
 import {
@@ -299,6 +299,22 @@ export function ReminderDashboard({ section }: { section: Section }) {
   const [theme, setTheme] = useState<Theme>("light");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [pendingActionIds, setPendingActionIds] = useState<string[]>([]);
+  const pendingActionRef = useRef(new Set<string>());
+
+  function beginAction(reminderId: string) {
+    if (pendingActionRef.current.has(reminderId)) return false;
+    pendingActionRef.current.add(reminderId);
+    setPendingActionIds(Array.from(pendingActionRef.current));
+    return true;
+  }
+
+  function endAction(reminderId: string) {
+    pendingActionRef.current.delete(reminderId);
+    setPendingActionIds((current) =>
+      current.filter((id) => id !== reminderId),
+    );
+  }
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -679,23 +695,28 @@ export function ReminderDashboard({ section }: { section: Section }) {
           return setError("Reminder ini sudah selesai. Edit untuk memulihkannya.");
         if (!canCompleteReminder(reminder))
           return setError("Jadwal reminder belum sinkron. Muat ulang sebelum menyelesaikannya.");
-        const { error: actionError } = await supabase.rpc(
-          "apply_user_occurrence_action",
-          {
-            p_occurrence_id: reminder.next_occurrence_id,
-            p_action: "complete",
-            p_snooze_minutes: 10,
-          },
-        );
-        if (actionError) return setError(actionError.message);
+        if (!beginAction(reminder.id)) return;
         try {
-          persist(await fetchReminders(supabase));
-        } catch (loadError) {
-          return setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Data terbaru gagal dimuat.",
+          const { error: actionError } = await supabase.rpc(
+            "apply_user_occurrence_action",
+            {
+              p_occurrence_id: reminder.next_occurrence_id,
+              p_action: "complete",
+              p_snooze_minutes: 10,
+            },
           );
+          if (actionError) return setError(actionError.message);
+          try {
+            persist(await fetchReminders(supabase));
+          } catch (loadError) {
+            return setError(
+              loadError instanceof Error
+                ? loadError.message
+                : "Data terbaru gagal dimuat.",
+            );
+          }
+        } finally {
+          endAction(reminder.id);
         }
         setNotice("Selesai. Satu hal penting sudah beres.");
         window.setTimeout(() => setNotice(""), 2600);
@@ -777,23 +798,28 @@ export function ReminderDashboard({ section }: { section: Section }) {
     if (supabase) {
       if (!reminder.next_occurrence_id)
         return setError("Occurrence aktif tidak ditemukan. Coba muat ulang.");
-      const { error: actionError } = await supabase.rpc(
-        "apply_user_occurrence_action",
-        {
-          p_occurrence_id: reminder.next_occurrence_id,
-          p_action: "snooze",
-            p_snooze_minutes: minutes,
-        },
-      );
-      if (actionError) return setError(actionError.message);
+      if (!beginAction(reminder.id)) return;
       try {
-        persist(await fetchReminders(supabase));
-      } catch (loadError) {
-        return setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Data terbaru gagal dimuat.",
+        const { error: actionError } = await supabase.rpc(
+          "apply_user_occurrence_action",
+          {
+            p_occurrence_id: reminder.next_occurrence_id,
+            p_action: "snooze",
+            p_snooze_minutes: minutes,
+          },
         );
+        if (actionError) return setError(actionError.message);
+        try {
+          persist(await fetchReminders(supabase));
+        } catch (loadError) {
+          return setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Data terbaru gagal dimuat.",
+          );
+        }
+      } finally {
+        endAction(reminder.id);
       }
     } else {
       const snoozedUntil = timeAfterMinutes(minutes);
@@ -1308,6 +1334,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
                 }
                 onComplete={(item) => updateStatus(item, "completed")}
                 onSnooze={snoozeReminder}
+                pendingActionIds={pendingActionIds}
                 onDelete={removeReminder}
                 onCreate={openCreate}
                 loading={busy}
@@ -1497,6 +1524,7 @@ export function ReminderDashboard({ section }: { section: Section }) {
                         }
                         onComplete={() => updateStatus(item, "completed")}
                         onSnooze={() => snoozeReminder(item)}
+                        actionPending={pendingActionIds.includes(item.id)}
                         onDelete={() => removeReminder(item)}
                       />
                     ))
@@ -1594,6 +1622,7 @@ function ReminderRow({
   onComplete,
   onSnooze,
   onDelete,
+  actionPending = false,
 }: {
   reminder: Reminder;
   index: number;
@@ -1602,6 +1631,7 @@ function ReminderRow({
   onComplete: () => void;
   onSnooze: () => void;
   onDelete: () => void;
+  actionPending?: boolean;
 }) {
   return (
     <article
@@ -1611,7 +1641,7 @@ function ReminderRow({
       <button
         className="complete-button"
         onClick={onComplete}
-        disabled={!canCompleteReminder(reminder)}
+        disabled={actionPending || !canCompleteReminder(reminder)}
         aria-label={`Tandai ${reminder.title} selesai`}
         title={
           reminder.status === "completed"
@@ -1654,7 +1684,7 @@ function ReminderRow({
         >
           {isTerminalReminderStatus(reminder.status) ? <RotateCcw size={15} /> : <Pencil size={15} />}
         </button>
-        <button aria-label="Tunda 10 menit" onClick={onSnooze} disabled={!canSnoozeReminder(reminder)}>
+        <button aria-label="Tunda 10 menit" onClick={onSnooze} disabled={actionPending || !canSnoozeReminder(reminder)}>
           <Clock3 size={15} />
         </button>
         <button
@@ -1696,6 +1726,7 @@ function ReminderTable({
   onBulkPause,
   onBulkResume,
   onBulkDelete,
+  pendingActionIds,
 }: {
   reminders: Reminder[];
   categories: string[];
@@ -1716,6 +1747,7 @@ function ReminderTable({
   onBulkPause: () => void;
   onBulkResume: () => void;
   onBulkDelete: () => void;
+  pendingActionIds: string[];
 }) {
   return (
     <>
@@ -1784,7 +1816,7 @@ function ReminderTable({
                 <button
                   className={`complete-button compact-check ${item.status === "completed" ? "is-completed" : ""}`}
                   onClick={() => onComplete(item)}
-                  disabled={!canCompleteReminder(item)}
+                  disabled={pendingActionIds.includes(item.id) || !canCompleteReminder(item)}
                   aria-label={
                     item.status === "completed"
                       ? `${item.title} sudah selesai`
@@ -1834,7 +1866,7 @@ function ReminderTable({
                 <button
                   aria-label="Tunda 10 menit"
                   onClick={() => onSnooze(item)}
-                  disabled={!canSnoozeReminder(item)}
+                  disabled={pendingActionIds.includes(item.id) || !canSnoozeReminder(item)}
                 >
                   <Clock3 size={15} />
                 </button>
