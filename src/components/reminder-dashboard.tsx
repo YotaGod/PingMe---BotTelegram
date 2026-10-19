@@ -1684,7 +1684,7 @@ function ReminderRow({
         >
           {isTerminalReminderStatus(reminder.status) ? <RotateCcw size={15} /> : <Pencil size={15} />}
         </button>
-        <button aria-label="Tunda 10 menit" onClick={onSnooze} disabled={actionPending || !canSnoozeReminder(reminder)}>
+        <button aria-label="Tunda " onClick={onSnooze} disabled={actionPending || !canSnoozeReminder(reminder)}>
           <Clock3 size={15} />
         </button>
         <button
@@ -1864,7 +1864,7 @@ function ReminderTable({
                   {isTerminalReminderStatus(item.status) ? <RotateCcw size={15} /> : <Pencil size={15} />}
                 </button>
                 <button
-                  aria-label="Tunda 10 menit"
+                  aria-label="Tunda"
                   onClick={() => onSnooze(item)}
                   disabled={pendingActionIds.includes(item.id) || !canSnoozeReminder(item)}
                 >

@@ -218,7 +218,7 @@ Deno.serve(async (request) => {
                 callback_data: `complete|${occurrence.id}`,
               },
               {
-                text: "⏰ Tunda 10 mnt (hari ini)",
+                text: "⏰ Tunda",
                 callback_data: `snooze_menu|${occurrence.id}`,
               },
             ],

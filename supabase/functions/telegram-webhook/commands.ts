@@ -119,7 +119,7 @@ function localDate(value: string, timezone: string) {
 }
 
 function localTime(value: string, timezone: string) {
-  return new Intl.DateTimeFormat("id-ID", {
+  return new Intl.DateTimeFormat("en-GB", {
     timeZone: timezone,
     hour: "2-digit",
     minute: "2-digit",
@@ -722,7 +722,13 @@ async function listReminders(
         lastByReminder.set(occurrence.reminder_id, occurrence);
     }
   }
-  let rows = reminders.flatMap((reminder: Record<string, any>) => {
+  type ReminderListRow = {
+    reminder: Record<string, any>;
+    occurrence?: Record<string, any>;
+    scheduledAt: string;
+  };
+  let rows: ReminderListRow[] = reminders.flatMap(
+    (reminder: Record<string, any>): ReminderListRow[] => {
     const occurrence =
       nextByReminder.get(reminder.id) ?? lastByReminder.get(reminder.id);
     if (!occurrence && mode !== "list" && mode !== "today") return [];
@@ -731,7 +737,8 @@ async function listReminders(
         ? occurrence.snoozed_until ?? occurrence.scheduled_at
         : occurrence?.scheduled_at ?? reminder.start_at;
     return [{ reminder, occurrence, scheduledAt }];
-  });
+    },
+  );
   if (mode === "today")
     rows = rows.filter(
       ({ reminder, scheduledAt }) =>

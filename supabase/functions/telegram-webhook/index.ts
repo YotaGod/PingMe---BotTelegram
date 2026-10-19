@@ -58,6 +58,35 @@ async function getTelegramOccurrenceSummary(
   return { ...occurrence, ...reminder };
 }
 
+async function clearOccurrenceKeyboards(
+  db: ReturnType<typeof createClient>,
+  botToken: string,
+  chatId: number,
+  occurrenceId: string,
+  currentMessageId?: number,
+) {
+  const { data: logs } = await db
+    .from("notification_logs")
+    .select("provider_message_id")
+    .eq("occurrence_id", occurrenceId)
+    .not("provider_message_id", "is", null);
+  const messageIds = new Set<number>();
+  if (currentMessageId) messageIds.add(currentMessageId);
+  for (const log of logs ?? []) {
+    const messageId = Number(log.provider_message_id);
+    if (Number.isInteger(messageId) && messageId > 0) messageIds.add(messageId);
+  }
+  await Promise.all(
+    Array.from(messageIds, (messageId) =>
+      telegramRequest(botToken, "editMessageReplyMarkup", {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: { inline_keyboard: [] },
+      }),
+    ),
+  );
+}
+
 function formatSnoozedTime(timestamp: string, timezone: string) {
   return new Intl.DateTimeFormat("id-ID", {
     weekday: "short",
@@ -212,6 +241,14 @@ Deno.serve(async (request) => {
         callback_query_id: callback.id,
         text: "Pilih durasi tunda.",
       });
+      if (callback.message?.message_id && callback.message.chat.id)
+        await clearOccurrenceKeyboards(
+          db,
+          botToken,
+          callback.message.chat.id,
+          occurrenceId,
+          callback.message.message_id,
+        );
       await telegramRequest(botToken, "sendMessage", {
         chat_id: callback.message?.chat.id,
         text: `⏰ Tunda reminder\n\n📌 ${summary.title}\nPilih berapa lama reminder ini ditunda:`,
@@ -281,13 +318,14 @@ Deno.serve(async (request) => {
               : "Pengingat dinonaktifkan.",
       show_alert: Boolean(error),
     });
-    if (!error && callback.message?.message_id) {
-      await telegramRequest(botToken, "editMessageReplyMarkup", {
-        chat_id: callback.message.chat.id,
-        message_id: callback.message.message_id,
-        reply_markup: { inline_keyboard: [] },
-      });
-    }
+    if (!error && callback.message?.message_id)
+      await clearOccurrenceKeyboards(
+        db,
+        botToken,
+        callback.message.chat.id,
+        occurrenceId,
+        callback.message.message_id,
+      );
     if (!error && action === "snooze" && callback.message?.chat.id) {
       const summary = await getTelegramOccurrenceSummary(
         db,
