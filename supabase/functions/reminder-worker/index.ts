@@ -195,7 +195,7 @@ Deno.serve(async (request) => {
         `Diproses: ${new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: reminder.timezone, hour12: false }).format(new Date())}`,
         `Seharusnya: ${new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: reminder.timezone, hour12: false }).format(scheduled)}`,
       );
-    if (displayName) lines.push("", `Hai${displayName},`);
+    if (displayName) lines.push("", `Hai${displayName}, Ada reminder untukmu!`);
 
     const actionButtons =
       reminder.schedule_type === "one_time"
