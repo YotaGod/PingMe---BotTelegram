@@ -37,7 +37,7 @@ const repeats = [
     { text: "Setiap hari", callback_data: "wizard|repeat|daily" },
   ],
   [
-    { text: "Weekdays · Sen–Jum", callback_data: "wizard|repeat|weekdays" },
+    { text: "Weekdays", callback_data: "wizard|repeat|weekdays" },
     { text: "Setiap minggu", callback_data: "wizard|repeat|weekly" },
   ],
   [{ text: "Batal", callback_data: "wizard|cancel" }],
